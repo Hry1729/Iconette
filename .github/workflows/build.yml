@@ -44,6 +44,10 @@ jobs:
 
       - name: Build app
         run: pnpm tauri build ${{ matrix.args }}
+        env:
+          # Let bundle_dmg.sh run its Finder AppleScript so the DMG gets our background and icon layout
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+        timeout-minutes: 30
 
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
