@@ -3,7 +3,7 @@ body{display:block;background:var(--win);user-select:none;-webkit-user-select:no
 .win{width:100vw;height:100vh;border-radius:0;box-shadow:none}
 input,code,.nm{user-select:text;-webkit-user-select:text}
 .top{padding-right:8px}
-.top.mac{padding-left:80px}
+.top.mac{padding-left:96px}
 .top .drag{align-self:stretch;flex:none;width:6px}
 .wc{display:flex;align-self:stretch;margin:0 -8px 0 4px}
 .wc button{width:44px;display:grid;place-items:center;color:var(--muted);font-size:14px}
