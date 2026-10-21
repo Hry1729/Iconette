@@ -1,0 +1,22 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "",
+        "width": 760,
+        "height": 520,
+        "minWidth": 600,
+        "minHeight": 420,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 26 }
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "macOS": { "minimumSystemVersion": "10.15", "signingIdentity": "-" }
+  }
+}

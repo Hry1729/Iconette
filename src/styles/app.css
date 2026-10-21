@@ -1,0 +1,15 @@
+/* Desktop overrides on top of the prototype styles: the real window IS the app window. */
+body{display:block;background:var(--win);user-select:none;-webkit-user-select:none}
+.win{width:100vw;height:100vh;border-radius:0;box-shadow:none}
+input,code,.nm{user-select:text;-webkit-user-select:text}
+.top{padding-right:8px}
+.top.mac{padding-left:80px}
+.top .drag{align-self:stretch;flex:none;width:6px}
+.wc{display:flex;align-self:stretch;margin:0 -8px 0 4px}
+.wc button{width:44px;display:grid;place-items:center;color:var(--muted);font-size:14px}
+.wc button:hover{background:var(--hover);color:var(--text)}
+.wc button.x:hover{background:#e81123;color:#fff}
+.soon{height:100%;display:grid;place-items:center;text-align:center;color:var(--muted)}
+.soon h2{margin:0 0 6px;font-size:16px;color:var(--text);font-weight:600}
+.zh{padding:0 6px 8px;color:var(--muted);font-size:11.5px}
+.ib .dot{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1px var(--line2)}
