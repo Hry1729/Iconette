@@ -16,6 +16,14 @@
 
 Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：一个 760×520 的小窗口，按 <kbd>Alt</kbd> / <kbd>⌥</kbd> + <kbd>Space</kbd> 随时叫出来，搜 27 万个开源图标，回车就复制成 SVG、Vue、React、UnoCSS、PNG 等格式。名字里的 *-ette* 是法语「小一号」的意思。
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/app-dark.png">
+    <img src="docs/screenshots/app-light.png" width="760" alt="Icônette 搜索「房子」">
+  </picture>
+</p>
+<p align="center"><sub>输入中文「房子」，按 home 搜出 128 个图标；深浅色跟随系统</sub></p>
+
 ## 功能
 
 - **找图标**：中英文关键词（内置中文词典，搜「房子」「箭头」都行）、按图标集筛选、颜色 / 尺寸实时调整
@@ -33,6 +41,13 @@ Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：�
 | Windows 10 / 11 | `Iconette-windows` → `Iconette_x.y.z_x64-setup.exe` | 推荐，装到当前用户，不需要管理员权限 |
 |  | `Iconette_x.y.z_x64_en-US.msi` | 企业部署用 |
 | macOS 10.15+ | `Iconette-macos-universal` → `Iconette_x.y.z_universal.dmg` | Intel 和 Apple Silicon 通用 |
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/install-macos.png" width="400" alt="macOS DMG 安装窗口"><br><sub>macOS：把图标拖进「应用程序」</sub></td>
+    <td align="center"><img src="docs/screenshots/install-windows.png" width="360" alt="Windows 安装向导"><br><sub>Windows：安装向导（中文系统显示中文）</sub></td>
+  </tr>
+</table>
 
 **macOS 第一次打开**：目前没有 Apple 开发者证书，系统会拦一下。把 Icônette 拖进「应用程序」后，右键 App → 打开；或者在终端执行：
 
