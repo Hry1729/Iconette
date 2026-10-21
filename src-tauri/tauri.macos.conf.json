@@ -30,7 +30,7 @@
         "background": "dmg/background.png",
         "windowSize": {
           "width": 660,
-          "height": 400
+          "height": 428
         },
         "appPosition": {
           "x": 180,
