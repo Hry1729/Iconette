@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    icones_desktop_lib::run()
+    iconette_lib::run()
 }

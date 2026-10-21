@@ -1,12 +1,12 @@
 [package]
-name = "icones-desktop"
+name = "iconette"
 version = "0.1.0"
-description = "Icônes desktop: icon & UI component finder"
+description = "Icônette: a tiny icon & UI component finder"
 authors = ["Hry1729"]
 edition = "2021"
 
 [lib]
-name = "icones_desktop_lib"
+name = "iconette_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

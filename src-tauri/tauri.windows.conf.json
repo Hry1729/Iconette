@@ -3,7 +3,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Icônes",
+        "title": "Icônette",
         "width": 760,
         "height": 520,
         "minWidth": 600,
@@ -15,10 +15,25 @@
     ]
   },
   "bundle": {
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
-      "nsis": { "languages": ["SimpChinese", "English"], "displayLanguageSelector": false }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp",
+        "installMode": "currentUser"
+      }
     }
   }
 }

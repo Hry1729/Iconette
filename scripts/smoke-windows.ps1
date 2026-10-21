@@ -1,6 +1,6 @@
 # Launch the built exe, make sure it stays alive, then grab a screenshot.
 $ErrorActionPreference = 'Stop'
-$exe = 'src-tauri/target/release/icones-desktop.exe'
+$exe = 'src-tauri/target/release/iconette.exe'
 $p = Start-Process -FilePath $exe -PassThru
 Start-Sleep -Seconds 20
 if ($p.HasExited) { Write-Error "App exited early with code $($p.ExitCode)" }

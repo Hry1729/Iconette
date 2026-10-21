@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Icones",
+  "productName": "Iconette",
   "version": "0.1.0",
-  "identifier": "io.github.hry1729.icones",
+  "identifier": "io.github.hry1729.iconette",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Icônes",
+        "title": "Icônette",
         "width": 760,
         "height": 520,
         "minWidth": 600,
@@ -22,13 +22,24 @@
         "resizable": true
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
-    "shortDescription": "Find icons & UI components",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "shortDescription": "Icônette: find icons & UI components",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "longDescription": "小小的 Icônes：轻量的图标与 UI 组件查找工具。",
+    "copyright": "© 2026 Hry1729 · based on Icônes by Anthony Fu",
+    "publisher": "Hry1729"
   }
 }

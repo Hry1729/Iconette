@@ -21,5 +21,5 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!())
-        .expect("error while running Icônes");
+        .expect("error while running Icônette");
 }

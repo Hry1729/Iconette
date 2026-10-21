@@ -1678,7 +1678,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "icones-desktop"
+name = "iconette"
 version = "0.1.0"
 dependencies = [
  "serde",
