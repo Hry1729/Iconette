@@ -1,0 +1,60 @@
+<h1 align="center">
+Icônes
+</h1>
+
+<p align="center">Icon Explorer with <b>Instant</b> searching, powered by <a href="https://github.com/iconify/iconify" target="_blank">Iconify</a> </p>
+
+<p align="center">
+<a href="https://icones.js.org">Go to App</a>
+</p>
+
+> **Desktop app work in progress.** This repository starts from [Icônes](https://github.com/antfu/icones) (MIT, Anthony Fu) as the base for an Icônes desktop app. Open [`preview/icones-desktop-preview.html`](preview/icones-desktop-preview.html) for the interactive UI preview.
+
+![Icônes screenshot 1](./screenshots/1.png)
+![Icônes screenshot 2](./screenshots/2.png)
+![Icônes screenshot 3](./screenshots/3.png)
+![Icônes screenshot 4](./screenshots/4.png)
+![Icônes screenshot 5](./screenshots/5.png)
+
+<p align="center">
+<sub><em>Dark Mode is now Live!</em></sub>
+</p>
+
+![Icônes dark mode screenshot](./screenshots/6.png)
+
+<p align="center">
+  <a href="https://cdn.jsdelivr.net/gh/antfu/static/sponsors.svg">
+    <img src='https://cdn.jsdelivr.net/gh/antfu/static/sponsors.svg' alt='Sponsors'/>
+  </a>
+</p>
+
+### Features
+
+- **Instant Fuzzy Searching** _- all are done locally, no web queries!_
+- The **Bag** _- select your icons and pack them into a ready-to-use icon font!_
+  - _[svg-packer](https://github.com/antfu/svg-packer) was born from this XD_
+- Copy the usage scripts
+- SVGs direct download
+- Mobile friendly
+- Collection bookmarks
+- Categories filters
+- Dark mode
+- Built with [Vite](https://github.com/vitejs/vite) and Vue 3
+  - If you like how it's built - try [🏕 Vitesse](https://github.com/antfu/vitesse), an opinionated starter template made from Icônes
+
+### Community
+
+- [VS Code Extension](https://github.com/afzalsayed96/vscode-icones) by [@afzalsayed96](https://github.com/afzalsayed96)
+
+## Development
+
+```bash
+pnpm install
+pnpm dev
+```
+
+`pnpm install` runs `scripts/prepare.ts` and generates the Iconify collection data under `public/collections` plus `src/data/collections-info.json`. Those generated files are intentionally not committed.
+
+## License
+
+MIT - Anthony Fu 2020
