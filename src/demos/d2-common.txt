@@ -1,0 +1,30 @@
+const NAV1=[['layout-dashboard','仪表盘'],['list-checks','生命周期'],['chart-column','数据分析'],['folder','项目'],['users','团队']];
+const NAV2=[['database','数据库'],['clipboard-list','报表'],['file-text','写作助手'],['ellipsis','更多']];
+const NAV3=[['settings','设置'],['circle-help','获取帮助'],['search','搜索']];
+const KPI=[['总收入','$1,250.00','+12.5%',1,'本月呈上升趋势','近 6 个月访客'],['新客户','1,234','-20%',0,'本期下降 20%','获客需要关注'],['活跃账户','45,678','+12.5%',1,'用户留存强劲','互动超出目标'],['增长率','4.5%','+4.5%',1,'业绩稳步增长','符合增长预期']];
+const TABS=[['outline','大纲',0],['past','历史表现',3],['key','关键人员',2],['focus','重点文档',0]];
+const COLS=[['type','章节类型'],['status','状态'],['target','目标'],['limit','上限'],['reviewer','审核人']];
+const REV=['李明','王强','赵敏'];
+const RL={'90':'近 3 个月','30':'近 30 天','7':'近 7 天'};
+const RLA=[['90','近 3 个月'],['30','近 30 天'],['7','近 7 天']];
+const DOCS=(()=>{const T=[['封面','封面'],['目录','目录'],['执行摘要','叙述'],['技术方案','叙述'],['设计','叙述'],['能力说明','叙述'],['与现有系统集成','叙述'],['创新与优势','叙述'],['EMR 创新方案概述','技术内容'],['高级算法与机器学习','叙述'],['安全与合规','技术内容'],['项目管理计划','叙述'],['风险评估','叙述'],['质量保证','技术内容'],['培训与支持','叙述'],['成本估算','财务'],['实施时间表','叙述']];
+ const out=[];for(let i=0;i<68;i++){const [h,t]=T[i%T.length];out.push({id:i+1,header:i<T.length?h:h+' '+(Math.floor(i/T.length)+1),type:t,status:[1,0,0,0,1,1,1,0,0,0][i%10]?'proc':'done',target:(i*17+18)%31+1,limit:(i*11+5)%29+1,reviewer:i%10>=7?null:(i%10<3?'李明':'王强')})}return out})();
+const ic=n=>({'--u':`url(https://api.iconify.design/${n.includes('/')?n:'lucide/'+n}.svg)`});
+function drawChart(el,c,days){if(!el)return;if(!el.__ro){el.__ro=new ResizeObserver(()=>{if(el.__w!==el.clientWidth)drawChart(el,el.__c,el.__d)});el.__ro.observe(el)}el.__c=c;el.__d=days;el.__w=el.clientWidth;
+ const N=90,all=[];for(let i=0;i<N;i++){const d=new Date(2026,6,3+i);const a=250+120*Math.sin(i/8)+50*Math.sin(i/3.6+1)+18*Math.sin(i/1.6);all.push({d,a:Math.round(a),b:Math.round(a*.45+35*Math.cos(i/5)+60)})}
+ const D=all.slice(N-days),W=el.clientWidth,H=el.clientHeight-24,mx=Math.max(...D.map(p=>p.a))*1.12;
+ const X=i=>i*W/(D.length-1),Y=v=>H-v/mx*H;
+ const line=k=>D.map((p,i)=>[X(i),Y(p[k])]).reduce((s,[x,y],i,a)=>{if(!i)return`M${x},${y}`;const [px,py]=a[i-1],cx=(px+x)/2;return s+` C${cx},${py} ${cx},${y} ${x},${y}`},'');
+ const step=Math.ceil(D.length/7),fd=d=>`${d.getMonth()+1}月${d.getDate()}日`;
+ const lab=D.map((p,i)=>i%step||i===0&&D.length>8?'':`<text x="${Math.min(Math.max(X(i),24),W-24)}" y="${H+18}" text-anchor="middle">${fd(p.d)}</text>`).join('');
+ const grid=[.25,.5,.75].map(f=>`<line x1="0" x2="${W}" y1="${H*f}" y2="${H*f}" stroke="#f0f0f0"/>`).join('');
+ el.innerHTML=`<svg width="${W}" height="${H+24}"><defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".5"/><stop offset="1" stop-color="${c}" stop-opacity=".02"/></linearGradient><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>${grid}
+ <path d="${line('a')} L${W},${H} L0,${H} Z" fill="url(#ga)"/><path d="${line('a')}" fill="none" stroke="${c}" stroke-width="1.5"/>
+ <path d="${line('b')} L${W},${H} L0,${H} Z" fill="url(#gb)"/><path d="${line('b')}" fill="none" stroke="${c}" stroke-opacity=".7" stroke-width="1.5"/>
+ <line class="hl" y1="0" y2="${H}" stroke="#a1a1aa" stroke-dasharray="3 3" style="display:none"/>${lab}</svg><div class="tip"></div>`;
+ const hl=el.querySelector('.hl'),tip=el.querySelector('.tip');
+ el.onmousemove=e=>{const r=el.getBoundingClientRect(),i=Math.max(0,Math.min(D.length-1,Math.round((e.clientX-r.left)/W*(D.length-1)))),p=D[i],x=X(i);
+  hl.setAttribute('x1',x);hl.setAttribute('x2',x);hl.style.display='';tip.style.display='block';
+  tip.innerHTML=`<b>${fd(p.d)}</b><div><i style="background:${c}"></i>桌面端<em>${p.a}</em></div><div><i style="background:${c};opacity:.55"></i>移动端<em>${p.b}</em></div>`;
+  tip.style.left=Math.min(x+12,W-140)+'px';tip.style.top='10px'};
+ el.onmouseleave=()=>{hl.style.display='none';tip.style.display='none'}}

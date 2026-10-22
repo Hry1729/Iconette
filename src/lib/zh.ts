@@ -11,6 +11,8 @@ for (const x of DICT.split(/\s+/)) {
   if (!ZHR[v]) ZHR[v] = zs.reduce((a, b) => (b.length > a.length ? b : a))
 }
 
+Object.assign(ZHR, { outline: '线性', outlined: '线性', line: '线性', linear: '线性', fill: '面性', filled: '面性', solid: '面性', bold: '粗', duotone: '双色', twotone: '双色', round: '圆角', rounded: '圆角', sharp: '直角', circle: '圆形', square: '方形', off: '关闭', alt: '变体' })
+
 const STYLE_WORDS = ['线性', '面性', '粗', '双色', '圆角', '直角', '圆形', '方形', '变体']
 
 /** English icon name → short Chinese meaning, e.g. "arrow-left" → "箭头 · 左". */

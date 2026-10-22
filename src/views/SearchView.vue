@@ -7,7 +7,7 @@ import { t } from '../lib/i18n'
 import { INFO, collection, search, shortName } from '../lib/iconify'
 import { zh2en } from '../lib/zh'
 import { openUrl } from '../lib/native'
-import { pick, toast } from '../lib/actions'
+import { pick, setMode, toast } from '../lib/actions'
 
 type State =
   | { k: 'hello' }
@@ -82,7 +82,7 @@ defineEmits<{ (e: 'copy', id: string): void }>()
     <button v-for="p in S.sets" :key="p" class="st" :class="{ on: R.set === p }" @click="R.set = p">
       <UiIcon v-if="INFO[p]?.samples?.[0]" :name="`${p}:${INFO[p].samples![0]}`" />{{ shortName(p) }}
     </button>
-    <button class="st add" :title="t('mSets')" @click="R.mode = 'sets'"><UiIcon name="lucide:plus" /></button>
+    <button class="st add" :title="t('mSets')" @click="setMode('sets'); R.res = 'icons'; R.lib = null"><UiIcon name="lucide:plus" /></button>
   </nav>
   <div ref="body" class="body">
     <div v-if="st.k === 'hello'" class="empty">

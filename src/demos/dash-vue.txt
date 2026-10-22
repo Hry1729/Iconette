@@ -1,0 +1,20 @@
+const EL=typeof ElementPlus!=='undefined',H=Vue.h;
+const msg=(m,t)=>EL?ElementPlus.ElMessage({message:m,type:t||'info'}):(window.__m||(window.__m=naive.createDiscreteApi(['message']).message))[t||'info'](m);
+const app=Vue.createApp({template:'#tpl',setup(){
+ const s=Vue.reactive({nav:'仪表盘',range:'90',tab:'outline',pg:1,ps:10,selN:0,checked:[],dlg:false,nt:'',ntype:'叙述'});
+ const rows=Vue.reactive(DOCS.map(r=>({...r})));const vis=Vue.reactive({type:true,status:true,target:true,limit:true,reviewer:true});
+ const view=Vue.computed(()=>rows.slice((s.pg-1)*s.ps,s.pg*s.ps));const chart=Vue.ref();
+ const draw=()=>Vue.nextTick(()=>drawChart(chart.value,EL?'#409eff':'#18a058',+s.range));
+ Vue.onMounted(()=>setTimeout(draw,50));Vue.watch(()=>[s.range,s.tab],draw);
+ const act=(c,r)=>{if(c==='删除'){rows.splice(rows.indexOf(r),1);msg('已删除「'+r.header+'」','warning')}else msg(c+'：'+r.header)};
+ const create=()=>{rows.unshift({id:Date.now(),header:s.nt||'未命名章节',type:s.ntype,status:'proc',target:0,limit:0,reviewer:null});s.nt='';s.pg=1;s.dlg=false;msg('章节已创建','success')};
+ const mi=([i,l])=>({label:l,key:l,icon:()=>H('i',{class:'ico',style:ic(i)})});
+ const menu1=[{type:'group',label:'首页',key:'g1',children:NAV1.map(mi)},{type:'group',label:'文档',key:'g2',children:NAV2.map(mi)}],menu3=NAV3.map(mi);
+ const N=window.naive,cols=Vue.computed(()=>!N?[]:[{type:'selection',width:40},{key:'g',width:34,render:()=>H('i',{class:'ico grip',style:ic('grip-vertical')})},{title:'标题',key:'header',render:r=>H('span',{style:'font-weight:500'},r.header)},
+  vis.type&&{title:'章节类型',key:'type',width:120,render:r=>H(N.NTag,{size:'small'},{default:()=>r.type})},
+  vis.status&&{title:'状态',key:'status',width:100,render:r=>H(N.NTag,{size:'small',bordered:false,type:r.status==='done'?'success':'warning'},{default:()=>r.status==='done'?'已完成':'进行中'})},
+  vis.target&&{title:'目标',key:'target',width:70,align:'right'},vis.limit&&{title:'上限',key:'limit',width:70,align:'right'},
+  vis.reviewer&&{title:'审核人',key:'reviewer',width:170,render:r=>r.reviewer||H(N.NSelect,{size:'small',placeholder:'分配审核人',options:REV.map(x=>({label:x,value:x})),style:'width:140px','onUpdate:value':v=>{r.reviewer=v}})},
+  {key:'op',width:56,render:r=>H(N.NDropdown,{trigger:'click',options:[{label:'编辑',key:'编辑'},{label:'复制',key:'复制'},{label:'收藏',key:'收藏'},{type:'divider',key:'d'},{label:'删除',key:'删除'}],onSelect:k=>act(k,r)},{default:()=>H(N.NButton,{quaternary:true,circle:true,size:'small'},{default:()=>H('i',{class:'ico',style:ic('ellipsis-vertical')})})})}].filter(Boolean));
+ return{zhCN:window.naive&&naive.zhCN,dateZhCN:window.naive&&naive.dateZhCN,s,rows,vis,view,chart,act,create,ic,NAV1,NAV2,NAV3,KPI,TABS,COLS,REV,RL,RLA,menu1,menu3,cols}}});
+EL?app.use(ElementPlus,{locale:window.ElementPlusLocaleZhCn}):app.use(naive);app.mount('#app');

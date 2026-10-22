@@ -8,15 +8,16 @@ import UiIcon from './components/UiIcon.vue'
 import SearchView from './views/SearchView.vue'
 import FavView from './views/FavView.vue'
 import SoonView from './views/SoonView.vue'
+import SetsView from './views/SetsView.vue'
 import { R, S, type Mode } from './lib/store'
 import { t } from './lib/i18n'
 import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
-import { clearSel, copy, like, select } from './lib/actions'
+import { clearSel, copy, like, select, setMode } from './lib/actions'
 import { registerGlobalShortcut } from './lib/native'
 
 const bar = ref<InstanceType<typeof TitleBar>>()
-const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : SoonView)
+const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SoonView)
 const COLORS = [null, '#1c1c1e', '#ffffff', '#e5484d', '#f5a524', '#30a46c', '#3e63dd', '#8e4ec6']
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
@@ -27,7 +28,6 @@ watchEffect(applyTheme)
 mq.addEventListener('change', applyTheme)
 watchEffect(() => { document.documentElement.lang = S.lang === 'zh' ? 'zh-CN' : 'en' })
 
-function setMode(m: Mode) { R.mode = m; R.sel = null; R.q = ''; R.set = null; R.pop = null }
 
 function onKey(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setMode((['search', 'sets', 'swipe', 'fav'] as Mode[])[+e.key - 1]); return }
