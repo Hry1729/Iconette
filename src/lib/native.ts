@@ -41,18 +41,25 @@ export async function win() {
   return getCurrentWindow()
 }
 
-/** Global ⌥/Alt+Space brings the window to front (the dedicated quick window comes later). */
-export async function registerGlobalShortcut(onFire: () => void) {
+async function invoke<T = void>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
+  if (!inTauri) return undefined
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<T>(cmd, args)
+}
+
+/** Show / hide the quick-pick window (also bound to ⌥/Alt+Space globally on the Rust side). */
+export const toggleQuick = () => invoke('toggle_quick')
+export const hideQuick = async () => { if (inTauri) await invoke('quick_hide'); else window.close() }
+export const setCloseToTray = (on: boolean) => invoke('set_close_to_tray', { on })
+export const setTrayLabels = (labels: string[]) => invoke('set_tray_labels', { labels })
+
+export async function autostartEnabled(): Promise<boolean> {
+  if (!inTauri) return false
+  try { const { isEnabled } = await import('@tauri-apps/plugin-autostart'); return await isEnabled() }
+  catch { return false }
+}
+export async function setAutostart(on: boolean) {
   if (!inTauri) return
-  try {
-    const { register, isRegistered } = await import('@tauri-apps/plugin-global-shortcut')
-    if (await isRegistered('Alt+Space')) return
-    await register('Alt+Space', async (e) => {
-      if (e.state !== 'Pressed') return
-      const w = await win()
-      await w.show(); await w.unminimize(); await w.setFocus()
-      onFire()
-    })
-  }
-  catch (e) { console.warn('global shortcut unavailable', e) }
+  const m = await import('@tauri-apps/plugin-autostart')
+  await (on ? m.enable() : m.disable())
 }

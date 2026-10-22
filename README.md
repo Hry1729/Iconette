@@ -26,11 +26,28 @@ Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：�
 
 ## 功能
 
-- **找图标**：中英文关键词（内置中文词典，搜「房子」「箭头」都行）、按图标集筛选、颜色 / 尺寸实时调整
-- **复制**：SVG、PNG 图片、Vue、React、UnoCSS、Iconify 名称、Data URL 等 8 种格式；可设为单击即复制
-- **收藏**：收藏图标，常用的随手拿
-- **桌面体验**：全局快捷键唤起、单实例、深浅色跟随系统；Mac 原生红绿灯，Windows 自绘标题栏按钮
-- **键盘优先**：方向键选图标，回车复制，<kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>1</kbd>–<kbd>4</kbd> 切换模式
+- **找图标**：中英文关键词（内置中文词典，搜「房子」「箭头」都行）、按图标集筛选、颜色 / 尺寸实时调整，图标名旁显示中文意思
+- **复制**：SVG、PNG 图片、Vue、React、UnoCSS、Iconify 名称、Data URL 等 8 种格式；可设为单击即复制；全局图标颜色
+- **资源**：「图标库」按分类列出全部 Iconify 图标集（同 Icônes 首页），点开看整套；「组件库」收录 18 个常用 React / Vue 组件库，按生态分组，shadcn/ui、Mantine、Element Plus、Naive UI 可在「示例面板」「全部组件」里直接操作真实组件；搜「弹窗」「tabs」等可横向对比；一键复制安装命令
+- **划一划**：像刷卡片一样逛图标库、组件和组件库，右滑收藏、左滑跳过、上滑打开，<kbd>R</kbd> 换一批、<kbd>Z</kbd> 撤回；每日推荐、按颜色 / 分类 / 可商用许可筛选
+- **收藏**：图标（可建分组）、图标库、组件库与组件、最近复制；「其他风格」一键看同名图标在别的图标集里的样子
+- **速取窗口**：在任何应用里按 <kbd>Alt</kbd> / <kbd>⌥</kbd> + <kbd>Space</kbd> 弹出小窗，搜索、回车复制并自动收起
+- **拖出 SVG**：把图标直接拖到文件夹、Figma、设计稿或聊天窗口，得到一个 `.svg` 文件
+- **桌面体验**：系统托盘（显示 / 速取 / 退出）、关闭时留在托盘、开机启动、单实例、深浅色跟随系统；Mac 原生红绿灯，Windows 自绘标题栏按钮
+- **键盘优先**：方向键选图标，回车复制，<kbd>F</kbd> 收藏，<kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>1</kbd>–<kbd>4</kbd> 切换模式
+
+> 组件库的实时预览从 jsDelivr / esm.sh / Tailwind CDN 加载真实组件库，需要联网。
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/resources.png" width="380" alt="资源 · 组件库"><br><sub>资源 · 组件库：按生态分组，4 个库可实时操作</sub></td>
+    <td align="center"><img src="docs/screenshots/ui-dashboard.png" width="380" alt="Element Plus 示例面板"><br><sub>示例面板：真实 Element Plus 组件拼成的后台页</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/swipe.png" width="380" alt="划一划"><br><sub>划一划：右滑收藏图标库，每日推荐</sub></td>
+    <td align="center"><img src="docs/screenshots/quick.png" width="380" alt="速取窗口"><br><sub>速取窗口：Alt / ⌥ + Space，回车复制并收起</sub></td>
+  </tr>
+</table>
 
 ## 下载与安装
 
@@ -83,8 +100,10 @@ python3 brand/render.py
 src/                 Vue 3 前端
   lib/               Iconify 数据、中文词典、复制格式、存储、Tauri 原生封装
   components/        标题栏、图标格子、详情条、弹出菜单、提示
-  views/             找图标 / 收藏 / （资源、划一划迁移中）
-src-tauri/           Tauri 2（Rust）壳：剪贴板、全局快捷键、单实例、打开链接
+  views/             找图标 / 资源 / 划一划 / 收藏
+  demos/             组件库示例面板（在沙箱 iframe 里运行）
+  QuickApp.vue       速取窗口（quick.html）
+src-tauri/           Tauri 2（Rust）壳：剪贴板、全局快捷键、速取窗口、托盘、开机启动、拖出文件、单实例
   tauri.macos.conf.json    macOS：透明标题栏 + 原生红绿灯、DMG 窗口布局
   tauri.windows.conf.json  Windows：无边框 + 自绘按钮、NSIS 安装向导
   icons/  dmg/  nsis/      图标与安装包素材（由 brand/render.py 生成）
@@ -96,13 +115,12 @@ preview/             HTML 设计原型
 ## 进度
 
 - [x] 窗口外壳、找图标、8 种复制格式、颜色 / 尺寸、单击复制、键盘操作
-- [x] 收藏图标（基础）
 - [x] 全局快捷键唤起
 - [x] 品牌：名称、Logo、DMG 安装窗口、Windows 安装向导
-- [ ] 资源：图标库 / 组件库 / 示例面板
-- [ ] 划一划
-- [ ] 收藏分组、最近复制、其他风格
-- [ ] 独立速取窗口、拖出 SVG、托盘
+- [x] 资源：图标库 / 组件库 / 示例面板
+- [x] 划一划
+- [x] 收藏分组、最近复制、其他风格、全局图标颜色
+- [x] 独立速取窗口、拖出 SVG、托盘、开机启动
 
 ## 致谢
 

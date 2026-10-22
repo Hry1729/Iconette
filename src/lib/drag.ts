@@ -1,8 +1,8 @@
 // 拖出 SVG: drag an icon out of the window as a real .svg file.
 // Desktop: a native OS drag (tauri-plugin-drag) of a temp file written by the Rust side.
 // Browser: HTML5 drag with DownloadURL (Chromium) + text/plain code.
-import { svg } from './iconify'
-import { code } from './format'
+import { load, svg } from './iconify'
+import { code, pngBlob } from './format'
 import { inTauri } from './native'
 import { S } from './store'
 import { t } from './i18n'
@@ -11,8 +11,18 @@ import { select, toast } from './actions'
 const fileName = (id: string) => id.replace(':', '-')
 const ink = () => getComputedStyle(document.body).getPropertyValue('--ink').trim() || '#1c1c1e'
 
-// Native OS drag arrives with the desktop shell work (tauri-plugin-drag).
-async function nativeDrag(_id: string) {}
+async function nativeDrag(id: string) {
+  await load([id])
+  const s = svg(id, { color: S.color, size: S.size })
+  if (!s) return
+  const png = new Uint8Array(await (await pngBlob(id, ink(), 64)).arrayBuffer())
+  const { invoke } = await import('@tauri-apps/api/core')
+  const [file, icon] = await invoke<[string, string]>('drag_prepare', { name: fileName(id), svg: s, png: Array.from(png) })
+  const { startDrag } = await import('@crabnebula/tauri-plugin-drag')
+  await startDrag({ item: [file], icon, mode: 'copy' }, (r) => {
+    if (r.result === 'Dropped') toast(t('dragged', { n: fileName(id) }), 'lucide:file-down')
+  })
+}
 
 function htmlDrag(e: DragEvent, id: string) {
   const s = svg(id, { color: S.color, size: S.size })

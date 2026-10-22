@@ -1,0 +1,8 @@
+/* The quick window IS the .qw panel. */
+html,body{background:var(--win)}
+body{display:block;overflow:hidden}
+.qw{position:static;transform:none;opacity:1;pointer-events:auto;width:100vw;height:100vh;border-radius:0;box-shadow:none;display:flex;flex-direction:column}
+.qw .q{flex:none}
+.qw .qb{flex:1;min-height:0;overflow:auto}
+.qw .grid{gap:2px}
+.qw .qf{flex:none}

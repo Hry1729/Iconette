@@ -16,7 +16,7 @@ import { t } from './lib/i18n'
 import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
-import { registerGlobalShortcut } from './lib/native'
+import { autostartEnabled, inTauri, isMac, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
 import { swipeApi } from './lib/swipe'
 import { INFO } from './lib/iconify'
 
@@ -34,7 +34,21 @@ mq.addEventListener('change', applyTheme)
 watchEffect(() => { document.documentElement.lang = S.lang === 'zh' ? 'zh-CN' : 'en' })
 
 
+function openQuick() {
+  R.pop = null
+  if (inTauri) toggleQuick()
+  else window.open('quick.html', 'iconette-quick', 'width=560,height=248')
+}
+const autostart = ref(false)
+async function toggleAutostart() {
+  try { await setAutostart(!autostart.value); autostart.value = !autostart.value }
+  catch (e) { console.warn(e) }
+}
+watchEffect(() => { setCloseToTray(S.closeToTray) })
+watchEffect(() => { setTrayLabels([t('showMain'), t('quick'), t('quitApp')]) })
+
 function onKey(e: KeyboardEvent) {
+  if (e.altKey && e.code === 'Space' && !inTauri) { e.preventDefault(); openQuick(); return }
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setMode((['search', 'sets', 'swipe', 'fav'] as Mode[])[+e.key - 1]); return }
   const typing = (document.activeElement as HTMLElement)?.tagName === 'INPUT'
   if (e.key === 'Escape') {
@@ -67,7 +81,7 @@ function onKey(e: KeyboardEvent) {
 onMounted(async () => {
   document.addEventListener('keydown', onKey)
   document.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.pop')) R.pop = null })
-  registerGlobalShortcut(() => bar.value?.focus())
+  if (inTauri) autostart.value = await autostartEnabled()
   bar.value?.focus()
   await loadInfo(S.sets)
   ensureAll()
@@ -102,7 +116,12 @@ onMounted(async () => {
       <hr>
       <button class="it" @click="S.lang = S.lang === 'zh' ? 'en' : 'zh'"><UiIcon name="lucide:languages" />{{ t('lang') }}<span class="r">{{ S.lang === 'zh' ? '中文' : 'English' }}</span></button>
       <button class="it" :class="{ on: S.click }" @click="S.click = !S.click"><UiIcon name="lucide:mouse-pointer-click" />{{ t('clickCopy') }}<span class="r ck">✓</span></button>
-      <button class="it"><UiIcon name="lucide:zap" />{{ t('quick') }}<span class="r">Alt Space</span></button>
+      <button class="it" @click="openQuick"><UiIcon name="lucide:zap" />{{ t('quick') }}<span class="r">{{ isMac ? '⌥ Space' : 'Alt Space' }}</span></button>
+      <template v-if="inTauri">
+        <hr>
+        <button class="it" :class="{ on: S.closeToTray }" @click="S.closeToTray = !S.closeToTray"><UiIcon name="lucide:app-window" />{{ t('closeTray') }}<span class="r ck">✓</span></button>
+        <button class="it" :class="{ on: autostart }" @click="toggleAutostart"><UiIcon name="lucide:power" />{{ t('autostart') }}<span class="r ck">✓</span></button>
+      </template>
     </Pop>
     <Pop id="cmp" style="right:180px;bottom:58px;width:300px"><OtherPop /></Pop>
     <Pop id="folder" style="right:160px;bottom:58px;width:200px"><FolderPop /></Pop>
