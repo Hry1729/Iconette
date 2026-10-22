@@ -51,13 +51,13 @@ Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：�
 
 ## 下载与安装
 
-每次推送到 `main`，GitHub Actions 会自动打包。到 **Actions → Build desktop → 最新一次运行 → Artifacts** 下载：
+到 **[Releases](https://github.com/Hry1729/icones-desktop/releases/latest)** 下载最新版本（每次推送到 `main` 的测试包也可以在 Actions → Build desktop → Artifacts 里找到）：
 
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10 / 11 | `Iconette-windows` → `Iconette_x.y.z_x64-setup.exe` | 推荐，装到当前用户，不需要管理员权限 |
+| Windows 10 / 11 | `Iconette_x.y.z_x64-setup.exe` | 推荐，装到当前用户，不需要管理员权限 |
 |  | `Iconette_x.y.z_x64_en-US.msi` | 企业部署用 |
-| macOS 10.15+ | `Iconette-macos-universal` → `Iconette_x.y.z_universal.dmg` | Intel 和 Apple Silicon 通用 |
+| macOS 10.15+ | `Iconette_x.y.z_universal.dmg` | Intel 和 Apple Silicon 通用 |
 
 <table>
   <tr>
