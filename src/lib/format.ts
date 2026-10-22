@@ -22,8 +22,8 @@ export function code(id: string, f: Fmt = S.fmt): string {
   }
 }
 
-export async function pngBlob(id: string, ink: string): Promise<Blob> {
-  const px = Math.max(S.size * 4, 256)
+export async function pngBlob(id: string, ink: string, size?: number): Promise<Blob> {
+  const px = size || Math.max(S.size * 4, 256)
   const s = svg(id, { size: px }).replace(/currentColor/g, S.color || ink)
   const img = new Image()
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(s)}`

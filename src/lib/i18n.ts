@@ -27,8 +27,8 @@ en:{snapSoon:'Preview coming',ltDash:'Sample dashboard',ltGrid:'Components',cmpN
  fFav:'<kbd>↵</kbd> copy <kbd>F</kbd> unsave · <kbd>⌘1 2 3</kbd> switch mode'}};
 
 // Desktop-only strings (not in the prototype).
-Object.assign(L.zh, { delFolder: '删除分组', closeTray: '关闭窗口时留在托盘', autostart: '开机启动', showMain: '显示主窗口', quitApp: '退出', quickOpen: '打开速取窗口' })
-Object.assign(L.en, { delFolder: 'Delete group', closeTray: 'Keep running in tray on close', autostart: 'Launch at login', showMain: 'Show main window', quitApp: 'Quit', quickOpen: 'Open quick window' })
+Object.assign(L.zh, { delFolder: '删除分组', dragHint: '拖出为 SVG 文件', closeTray: '关闭窗口时留在托盘', autostart: '开机启动', showMain: '显示主窗口', quitApp: '退出', quickOpen: '打开速取窗口' })
+Object.assign(L.en, { delFolder: 'Delete group', dragHint: 'Drag out as an SVG file', closeTray: 'Keep running in tray on close', autostart: 'Launch at login', showMain: 'Show main window', quitApp: 'Quit', quickOpen: 'Open quick window' })
 
 export function t(k: string, v: Record<string, string | number> = {}): string {
   return (L[S.lang]?.[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => String(v[x] ?? ''))

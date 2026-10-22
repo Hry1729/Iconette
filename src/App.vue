@@ -4,6 +4,8 @@ import TitleBar from './components/TitleBar.vue'
 import DetailBar from './components/DetailBar.vue'
 import Pop from './components/Pop.vue'
 import Toast from './components/Toast.vue'
+import OtherPop from './components/OtherPop.vue'
+import FolderPop from './components/FolderPop.vue'
 import UiIcon from './components/UiIcon.vue'
 import SearchView from './views/SearchView.vue'
 import FavView from './views/FavView.vue'
@@ -102,6 +104,8 @@ onMounted(async () => {
       <button class="it" :class="{ on: S.click }" @click="S.click = !S.click"><UiIcon name="lucide:mouse-pointer-click" />{{ t('clickCopy') }}<span class="r ck">✓</span></button>
       <button class="it"><UiIcon name="lucide:zap" />{{ t('quick') }}<span class="r">Alt Space</span></button>
     </Pop>
+    <Pop id="cmp" style="right:180px;bottom:58px;width:300px"><OtherPop /></Pop>
+    <Pop id="folder" style="right:160px;bottom:58px;width:200px"><FolderPop /></Pop>
     <Pop id="filter" style="right:200px;top:46px;width:260px">
       <div class="lbl">{{ t('fColor') }}</div>
       <div class="chips"><button v-for="k in (['any', 'mono', 'multi'] as const)" :key="k" :class="{ on: S.swf.color === k }" @click="S.swf.color = k">{{ t(k === 'any' ? 'fAny' : k === 'mono' ? 'fMono' : 'fMulti') }}</button></div>

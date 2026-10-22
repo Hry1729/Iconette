@@ -13,3 +13,10 @@ input,code,.nm{user-select:text;-webkit-user-select:text}
 .soon h2{margin:0 0 6px;font-size:16px;color:var(--text);font-weight:600}
 .zh{padding:0 6px 8px;color:var(--muted);font-size:11.5px}
 .ib .dot{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1px var(--line2)}
+.nmzh{font:12px var(--font);color:var(--muted);margin-left:8px}
+/* other-styles grid (the prototype's 6-col .cmp was later reused for the component comparison) */
+.cmp6{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;padding:2px 4px 6px}
+.cmp6 .t{font-size:20px;border-radius:8px}
+.cmp6 .t.on{background:var(--sub)}
+.cmp6>button{aspect-ratio:1;display:grid;place-items:center}
+.cmp6 .none{grid-column:1/-1;padding:14px;text-align:center;color:var(--muted);font-size:12px}

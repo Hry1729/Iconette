@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { iconVer, svg, want } from '../lib/iconify'
+import { dragStart } from '../lib/drag'
 
 const props = defineProps<{ id: string, sel?: boolean }>()
 const el = ref<HTMLElement>()
@@ -24,7 +25,7 @@ onBeforeUnmount(() => io?.disconnect())
 </script>
 
 <template>
-  <button ref="el" class="t" :class="{ sel }" :data-ic="id" :title="id">
+  <button ref="el" class="t" :class="{ sel }" :data-ic="id" :title="id" draggable="true" @dragstart="dragStart($event, id)" @mousedown="dragStart($event, id)">
     <span v-if="html" class="i" v-html="html" />
     <span v-else class="ph" />
   </button>
