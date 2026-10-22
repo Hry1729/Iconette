@@ -7,7 +7,7 @@ import Toast from './components/Toast.vue'
 import UiIcon from './components/UiIcon.vue'
 import SearchView from './views/SearchView.vue'
 import FavView from './views/FavView.vue'
-import SoonView from './views/SoonView.vue'
+import SwipeView from './views/SwipeView.vue'
 import SetsView from './views/SetsView.vue'
 import { R, S, type Mode } from './lib/store'
 import { t } from './lib/i18n'
@@ -15,9 +15,12 @@ import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
 import { registerGlobalShortcut } from './lib/native'
+import { swipeApi } from './lib/swipe'
+import { INFO } from './lib/iconify'
 
 const bar = ref<InstanceType<typeof TitleBar>>()
-const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SoonView)
+const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SwipeView)
+const cats = computed(() => [...new Set(Object.values(INFO).map(s => s.category).filter((c): c is string => !!c && c !== 'Archive / Unmaintained'))])
 const COLORS = [null, '#1c1c1e', '#ffffff', '#e5484d', '#f5a524', '#30a46c', '#3e63dd', '#8e4ec6']
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
@@ -39,6 +42,13 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (typing) return
+  if (R.mode === 'swipe') {
+    const a = ({ ArrowRight: 'like', ArrowLeft: 'nope', ArrowUp: 'open', Enter: 'open' } as const)[e.key as 'Enter']
+    if (a) { e.preventDefault(); swipeApi.commit(a) }
+    if (e.key.toLowerCase() === 'z') swipeApi.undo()
+    if (e.key.toLowerCase() === 'r') swipeApi.shuffle()
+    return
+  }
   if (e.key === '/') { e.preventDefault(); bar.value?.focus(); return }
   if (!R.sel) { if (e.key.length === 1 && /\w/.test(e.key) && !e.metaKey && !e.ctrlKey) bar.value?.focus(); return }
   if (e.key === 'Enter') { e.preventDefault(); copy(); return }
@@ -91,6 +101,15 @@ onMounted(async () => {
       <button class="it" @click="S.lang = S.lang === 'zh' ? 'en' : 'zh'"><UiIcon name="lucide:languages" />{{ t('lang') }}<span class="r">{{ S.lang === 'zh' ? '中文' : 'English' }}</span></button>
       <button class="it" :class="{ on: S.click }" @click="S.click = !S.click"><UiIcon name="lucide:mouse-pointer-click" />{{ t('clickCopy') }}<span class="r ck">✓</span></button>
       <button class="it"><UiIcon name="lucide:zap" />{{ t('quick') }}<span class="r">Alt Space</span></button>
+    </Pop>
+    <Pop id="filter" style="right:200px;top:46px;width:260px">
+      <div class="lbl">{{ t('fColor') }}</div>
+      <div class="chips"><button v-for="k in (['any', 'mono', 'multi'] as const)" :key="k" :class="{ on: S.swf.color === k }" @click="S.swf.color = k">{{ t(k === 'any' ? 'fAny' : k === 'mono' ? 'fMono' : 'fMulti') }}</button></div>
+      <div class="lbl">{{ t('fCat') }}</div>
+      <div class="chips"><button :class="{ on: !S.swf.cat }" @click="S.swf.cat = null">{{ t('fAny') }}</button><button v-for="c in cats" :key="c" :class="{ on: S.swf.cat === c }" @click="S.swf.cat = c">{{ c }}</button></div>
+      <hr>
+      <button class="it" :class="{ on: S.swf.lic }" @click="S.swf.lic = !S.swf.lic">{{ t('fLic') }}<span class="r ck">✓</span></button>
+      <button class="it" style="color:var(--muted)" @click="S.swf = { color: 'any', cat: null, lic: false }">{{ t('reset') }}</button>
     </Pop>
     <Toast />
   </div>

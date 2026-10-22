@@ -104,7 +104,8 @@ export async function collection(p: string): Promise<string[]> {
     const d: any = await J(`${API}/collection?prefix=${p}`)
     COLL[p] = [...new Set<string>([...(d.uncategorized || []), ...Object.values<string[]>(d.categories || {}).flat()])]
   }
-  catch { COLL[p] = INFO[p]?.samples || [] }
+  // Network/rate-limit failure: fall back to the samples, but don't cache so a later call retries.
+  catch { return INFO[p]?.samples || [] }
   return COLL[p]
 }
 
