@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
 import UiIcon from './UiIcon.vue'
 import Logo from './Logo.vue'
 import { R, type Mode } from '../lib/store'
 import { t } from '../lib/i18n'
 import { setMode } from '../lib/actions'
 import { inTauri, isMac, modKey, win } from '../lib/native'
-import { chest, chestCount, openPop } from '../lib/fx'
+import { openPop } from '../lib/fx'
 import { GLYPH_CASE, GLYPH_GACHA } from '../lib/iso'
 
 // Title bar = drag + switch. Everything that is not a control carries data-tauri-drag-region
@@ -14,10 +13,6 @@ import { GLYPH_CASE, GLYPH_GACHA } from '../lib/iso'
 const MODES: [Mode, string, string][] = [['search', 'lucide:search', 'mSearch'], ['sets', 'lucide:layout-grid', 'mSets'], ['swipe', 'lucide:layers', 'swipe']]
 const mac = isMac && inTauri
 const showWinControls = inTauri && !isMac
-const count = computed(() => chestCount())
-// Badge digit rolls whenever the count changes or a flight lands.
-const tickKey = ref(0)
-watch([count, () => chest.tick], () => { tickKey.value++ })
 const wmin = async () => (await win()).minimize()
 const wmax = async () => (await win()).toggleMaximize()
 const wclose = async () => (await win()).close()
@@ -35,7 +30,7 @@ const wclose = async () => (await win()).close()
         <span v-if="m === 'swipe'" class="tgi" v-html="GLYPH_GACHA" /><UiIcon v-else :name="ic" /><span class="lb">{{ t(k) }}</span>
       </button>
       <button class="chestbtn" :class="{ on: R.mode === 'fav' }" :title="`${t('chestTip')}  ${modKey}4`" @click="setMode('fav'); ($event.currentTarget as HTMLElement).blur()">
-        <span class="cw"><span class="tgi ch" v-html="GLYPH_CASE" /><span v-if="count" class="badge"><span :key="tickKey" class="tick">{{ count > 99 ? '99+' : count }}</span></span></span>
+        <span class="cw"><span class="tgi ch" v-html="GLYPH_CASE" /></span>
         <span class="lb">{{ t('mFav') }}</span>
       </button>
     </div>

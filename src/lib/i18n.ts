@@ -105,3 +105,15 @@ Object.assign(L.zh, {
 Object.assign(L.en, {
   updCheck: 'Check for updates', updChecking: 'Checking…', updLatest: 'Up to date', updFail: 'Check failed', updAvail: 'v{v} is available', updNow: 'Update', updGet: 'Download', updLater: 'Later', updInstalling: 'Updating {p}%',
 })
+
+// v0.4 (v11 design): hand-inked gashapon with a knob; the favourites page is the idea chest again.
+Object.assign(L.zh, {
+  chestT: '收藏', chestTip: '收藏', cFig: '灵感宝箱', pull: '扭一下', crank: '旋钮', keptMsg: '{n} 已收进宝箱', favd: '已收进宝箱', likedSet: '{n} 已收进宝箱',
+  gHint: '拖动旋钮转一圈 · <kbd>Space</kbd> 扭一下 · <kbd>→</kbd> 收下 · <kbd>←</kbd> 放回', prevPage: '上一页 ←', nextPage: '下一页 →', dChest: '我的宝箱', movedOut: '已移出宝箱',
+  chestDeckNone: '宝箱里还没有图标库或组件库', toGacha: '去扭蛋机',
+})
+Object.assign(L.en, {
+  chestT: 'Saved', chestTip: 'Saved', cFig: 'Idea chest', pull: 'Turn', crank: 'Knob', keptMsg: '{n} is in your chest', favd: 'Saved to your chest', likedSet: '{n} saved to your chest',
+  gHint: 'Drag the knob a full turn · <kbd>Space</kbd> turn · <kbd>→</kbd> keep · <kbd>←</kbd> put back', prevPage: 'Previous page ←', nextPage: 'Next page →', dChest: 'My chest', movedOut: 'Removed from chest',
+  chestDeckNone: 'No saved sets or libraries yet', toGacha: 'Gacha machine',
+})

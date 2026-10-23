@@ -15,7 +15,7 @@ import { copy, pick, setMode, toast } from '../lib/actions'
 import { fmtLabel } from '../lib/format'
 import { focusApi, gachaFx } from '../lib/swipe'
 import { flyToChest, openPop } from '../lib/fx'
-import { GACHA_VB, gachaScene } from '../lib/iso'
+import { GM } from '../lib/iso'
 import { modKey } from '../lib/native'
 
 type State =
@@ -56,12 +56,11 @@ const tbig = ref<HTMLElement>()
 function saveToday() { const on = toggleFav(today); if (on) flyToChest(tbig.value, svg(today)) }
 
 // ---- bottom-right mini gacha machine → 划一划 · 扭蛋 (shared-element transition, see GachaView)
-const mgSfx = `mg${Math.random().toString(36).slice(2, 6)}`
-const miniSVG = `<svg class="iso10 mgsvg" viewBox="${GACHA_VB.M.join(' ')}" preserveAspectRatio="xMidYMid meet">${gachaScene(mgSfx)}</svg>`
+const miniSVG = `<svg class="ink mgsvg" viewBox="${GM.VB.mini.join(' ')}" preserveAspectRatio="xMidYMid meet">${GM.scene({})}</svg>`
 const mini = ref<HTMLElement>()
 function toGacha() {
   const el = mini.value?.querySelector('svg') as SVGSVGElement | null
-  if (el) { const r = el.getBoundingClientRect(); gachaFx.flip = { x: r.left, y: r.top, w: r.width, h: r.height, m: el.getScreenCTM()!, html: el.outerHTML } }
+  if (el) { const r = el.getBoundingClientRect(); gachaFx.flip = { x: r.left, y: r.top, w: r.width, h: r.height, m: el.getScreenCTM()!, html: el.outerHTML }; mini.value!.style.opacity = '0' }
   S.swView = 'gacha'
   setMode('swipe')
 }
