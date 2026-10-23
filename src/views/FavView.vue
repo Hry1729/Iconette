@@ -10,17 +10,19 @@ import { t } from '../lib/i18n'
 import { INFO, ensureAll } from '../lib/iconify'
 import { zh2en } from '../lib/zh'
 import { UI, UICOL, ukl } from '../lib/ui-libs'
-import { clearSel, leaveHook, likeSet, likeUI, openLib, openSet, pick } from '../lib/actions'
+import { clearSel, likeSet, likeUI, openLib, openSet, pick, setMode } from '../lib/actions'
 import { focusApi } from '../lib/swipe'
 import { modKey } from '../lib/native'
-import { openPop } from '../lib/fx'
+import { chestFx, machFx, openPop, pageFx, reduced } from '../lib/fx'
 import { icons as setIcons, pickIcons } from '../lib/deck'
-import { CASE, ISO, P3, TAGC, anim, clamp01, easeIO, easeOut, easeOutBack, sleep, tween } from '../lib/iso'
+import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, tween } from '../lib/iso'
 
-// 收藏 = 扭蛋收纳盒. A multi-layer capsule case: one tray of 6 capsules = one page of 6 cards (3 × 2) for saved
-// icon sets and UI libraries/components. Open: latch flips, lid lifts aside, capsules fly out and open into cards.
-// Next layer: cards fold back into capsules → the tray is lifted and stacked to the right → next tray's capsules fly
-// out. Icons and recent copies are plain grids (with groups) under the closed case.
+// 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
+// cards per page (3 × 2). Entering: 6 capsules fly out of the chest and bloom into the cards. Turning a page: the 6
+// cards fold into capsules and fly back while the next 6 fly out, both starting at once (~420 ms, transform/opacity
+// only). The small gashapon machine stands behind-left of the chest; 收藏 ↔ 扭蛋 morph chest and machine as shared
+// elements. Leaving never blocks the switch: the frozen page plays the fly-back + lid close on its own layer.
+// Icons and recent copies are plain grids (with groups).
 defineEmits<{ (e: 'copy', id: string): void }>()
 ensureAll()
 
@@ -50,21 +52,21 @@ function okAdd() {
 function delFolder(f: string) { delete S.folders[f]; if (R.folder === f) R.folder = null }
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
-// ---- the case
+// ---- the chest
+const FLY = { out: 340, back: 320, stag: 12, ease: 'cubic-bezier(.22,.7,.3,1)' }
 const items = computed<string[]>(() => (R.favTab === 'ui' ? S.uiFav : R.favTab === 'sets' ? S.sets : []))
 const page = reactive<Record<string, number>>({ sets: 1, ui: 1 })
-const curPage = () => Math.max(1, Math.min(page[R.favTab] || 1, Cg.N))
-const shown = ref(1) // page whose cards are in the grid
-const vis = reactive<boolean[]>(Array(6).fill(false)) // card i visible (else a dashed slot)
-const isOpen = ref(false)
-const nLayers = ref(2)
-const busy = ref(false)
-const sfx = `fc${Math.random().toString(36).slice(2, 6)}`
+const nPages = computed(() => Math.max(1, Math.ceil(items.value.length / 6)))
+const curPage = computed(() => Math.max(1, Math.min(page[R.favTab] || 1, nPages.value)))
+const rootEl = ref<HTMLElement>()
 const svgEl = ref<SVGSVGElement>()
+const msvg = ref<SVGSVGElement>()
+const fchest = ref<HTMLElement>()
+const fmach = ref<HTMLElement>()
 const grid = ref<HTMLElement>()
 const input = ref<HTMLInputElement>()
-let Cg: any = { x0: 0, y0: 0, W: 96, N: 2, K: 6, th: 14, base: 6, lidH: 9 }
-let L: any = null
+let busy = false
+let toGachaNext = false
 
 const libOf = (id: string) => id.split('/')[0]
 const tagOf = (idx: number) => {
@@ -72,255 +74,250 @@ const tagOf = (idx: number) => {
   if (R.favTab === 'ui' && id) return UICOL[libOf(id)] || TAGC[idx % TAGC.length]
   return TAGC[(idx + 2 * Math.floor(idx / 6)) % TAGC.length]
 }
-const capFor = (idx: number) => (items.value[idx] ? { top: tagOf(idx), tag: '', rot: -24 + (idx * 37 % 40) } : null)
-const cardItems = computed(() => Array.from({ length: 6 }, (_, i) => { const idx = (shown.value - 1) * 6 + i; return { i, idx, id: items.value[idx] || '' } }))
+const cardItems = computed(() => Array.from({ length: 6 }, (_, i) => { const idx = (curPage.value - 1) * 6 + i; return { i, idx, id: items.value[idx] || '' } }))
 watch(cardItems, (cs) => { if (R.favTab === 'sets') cs.forEach(c => c.id && pickIcons(c.id)) }, { immediate: true })
 const N = (n?: number) => Number(n || 0).toLocaleString()
+const cardTag = (idx: number) => tagOf(idx)
+function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
-function makeC() { Cg = { x0: 0, y0: 0, W: 96, N: Math.max(2, Math.ceil(items.value.length / 6)), K: 6, th: 14, base: 6, lidH: 9 }; nLayers.value = Cg.N }
-function reset(open: boolean) {
-  makeC()
-  isOpen.value = open
-  const p = curPage()
-  L = CASE.layout(Cg, p, open)
-  L.active = p
-  L.caps = {}
-  L.show = {}
-  for (let j = 1; j <= Cg.N; j++) {
-    L.caps[j] = []
-    L.show[j] = []
-    for (let i = 0; i < 6; i++) { L.caps[j][i] = caseMode.value ? capFor((j - 1) * 6 + i) : null; L.show[j][i] = true }
-  }
-  paint()
+/** Chest mouth in client coordinates. */
+function mouth(svg = svgEl.value!) {
+  const q = CHEST.mouthXY(CHEST.BIG)
+  const m = svg.getScreenCTM()!
+  return { x: m.a * q[0] + m.e, y: m.d * (q[1] - 4) + m.f }
 }
-function paint() {
-  const svg = svgEl.value
-  if (!svg || !L) return
-  ISO.setSfx(sfx)
-  svg.innerHTML = ISO.defs() + CASE.svg(Cg, L, { tabs: true })
-  const G = CASE.geo(Cg)
-  const k = clamp01(Math.max(L.lid.dx, ...Object.values(L.trays).map((x: any) => x.dx)) / G.stashDX)
-  const lift = clamp01((L.lid.z - G.caseTop) / 18)
-  const ex = Math.max(0, Cg.N * Cg.th - 45)
-  const A = [-100, -84 - ex, 200, 190 + ex]
-  const B = [-94, -82 - ex, 286, 238 + ex]
-  const kk = Math.max(k, lift * 0.35)
-  svg.setAttribute('viewBox', A.map((v, i) => ISO.f(v + (B[i] - v) * kk)).join(' '))
-}
-/** World point → client coordinates. */
-function scr(x: number, y: number, z: number) {
-  const q3 = P3(x, y, z)
-  const m = svgEl.value!.getScreenCTM()!
-  return { x: m.a * q3[0] + m.c * q3[1] + m.e, y: m.b * q3[0] + m.d * q3[1] + m.f, s: m.a }
-}
-function pocketScr(j: number, i: number) {
-  const tr = L.trays[j]
-  const [px, py] = CASE.pocketXY(Cg, j, i, tr.dx)
-  const pr = ((Cg.W - 6) / 3) * 0.36
-  const p = scr(px, py, tr.z + Cg.th - 2)
-  return { x: p.x, y: p.y - pr * 1.02 * 0.52 * p.s, r: pr * 1.02 * p.s }
-}
-const cardEl = (i: number) => grid.value?.querySelector<HTMLElement>(`.fc[data-i="${i}"]`)
-function flycap(r: number, cap: { top: string, tag: string }) {
+function capEl(col: string, size = 30) {
   const d = document.createElement('div')
-  d.className = 'flycap'
-  d.style.cssText = `width:${r * 2}px;height:${r * 2}px`
-  d.innerHTML = `<svg class="iso10" viewBox="${-r} ${-r} ${2 * r} ${2 * r}" style="overflow:visible">${ISO.capsule(r, cap.top, cap.tag)}</svg>`
+  d.className = 'flycap fcap11'
+  const r = size / 2
+  d.style.cssText = `width:${size}px;height:${size}px`
+  d.innerHTML = `<svg class="ink" viewBox="${-r} ${-r} ${size} ${size}" style="overflow:visible">${INK.capsule(r * 0.92, col || '#e5484d', { th: -30, m: 0.36, lw: 1.15 })}</svg>`
   document.querySelector('.win')!.appendChild(d)
   return d
 }
-/** Lid / tray path: lift → slide → set down. */
-async function movePart(get: () => any, set: (v: any) => void, to: { dx: number, z: number }, lift: number, dur = 640) {
-  const from = { ...get() }
-  const zUp = Math.max(from.z, to.z, lift)
-  await tween(dur, (_e, tt) => {
-    let dx: number
-    let z: number
-    if (tt < 0.3) { const k = easeOut(tt / 0.3); dx = from.dx; z = from.z + (zUp - from.z) * k }
-    else if (tt < 0.72) { const k = easeIO((tt - 0.3) / 0.42); dx = from.dx + (to.dx - from.dx) * k; z = zUp }
-    else { const k = easeOutBack((tt - 0.72) / 0.28); dx = to.dx; z = zUp + (to.z - zUp) * k }
-    set({ dx, z })
-    paint()
-  }, x => x)
+/** Capsules fly out of the chest and bloom into the cards of the current grid. */
+function flyOut(delay = 0) {
+  const g = grid.value
+  if (!g || !svgEl.value) return Promise.resolve()
+  const cards = [...g.querySelectorAll<HTMLElement>('.fc')]
+  const M = mouth()
+  const S0 = 30
+  const jobs: Promise<unknown>[] = []
+  cards.forEach((c, k) => {
+    const r = c.getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    const d0 = delay + k * FLY.stag
+    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: d0 + 160, fill: 'backwards' }).finished); return }
+    const cp = capEl(c.dataset.c || '', S0)
+    const dx = M.x - cx
+    const dy = M.y - cy
+    const ax = dx * 0.45
+    const ay = dy * 0.45 - 46 - (k % 3) * 6
+    cp.style.left = `${cx - S0 / 2}px`
+    cp.style.top = `${cy - S0 / 2}px`
+    anim(cp, [{ transform: `translate(${dx}px,${dy}px) scale(.42) rotate(-200deg)`, opacity: 0 }, { opacity: 1, offset: 0.08 }, { transform: `translate(${ax}px,${ay}px) scale(.85) rotate(-70deg)`, offset: 0.34 }, { transform: 'translate(0,0) scale(1.08) rotate(0)', opacity: 1, offset: 0.6 }, { transform: 'scale(1.4)', opacity: 0, offset: 0.78 }, { transform: 'scale(1.4)', opacity: 0 }], { duration: FLY.out, delay: d0, easing: FLY.ease, fill: 'both' }).finished.then(() => cp.remove(), () => cp.remove())
+    jobs.push(anim(c, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(.3)', offset: 0.46 }, { opacity: 1, transform: 'scale(1.025)', offset: 0.78 }, { opacity: 1, transform: 'none' }], { duration: FLY.out, delay: d0, easing: FLY.ease, fill: 'backwards' }).finished)
+  })
+  pulse(delay)
+  return Promise.all(jobs).catch(() => {})
 }
-/** Capsules fly out of tray p and open into the cards. */
-async function flyOut(p: number) {
-  shown.value = p
-  for (let i = 0; i < 6; i++) vis[i] = false
-  await nextTick()
-  const its = [0, 1, 2, 3, 4, 5].filter(i => L.caps[p]?.[i])
-  await Promise.all(its.map((i, k) => (async () => {
-    await sleep(k * 70)
-    const cap = L.caps[p][i]
-    const a = pocketScr(p, i)
-    L.show[p][i] = false
-    paint()
-    const c = cardEl(i)
-    if (!c) return
-    const b = c.getBoundingClientRect()
-    const d = flycap(a.r, cap)
-    const sx = a.x - a.r
-    const sy = a.y - a.r
-    const ex = b.left + b.width / 2 - a.r
-    const ey = b.top + b.height / 2 - a.r
-    const sc = 20 / a.r
-    const kf: Keyframe[] = []
-    for (let n = 0; n <= 14; n++) {
-      const tt = n / 14
-      const u = 1 - tt
-      const cx = (sx + ex) / 2
-      const cy = Math.min(sy, ey) - 60 - k * 4
-      kf.push({ transform: `translate(${u * u * sx + 2 * u * tt * cx + tt * tt * ex}px,${u * u * sy + 2 * u * tt * cy + tt * tt * ey}px) scale(${1 + (sc - 1) * tt}) rotate(${tt * 300 - 24}deg)` })
-    }
-    await anim(d, kf, { duration: 560, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished
-    anim(d.querySelector('.ctop')!, [{ transform: 'none', opacity: 1 }, { transform: 'translate(-6px,-14px) rotate(-40deg)', opacity: 0 }], { duration: 300, easing: 'ease-out', fill: 'forwards' })
-    anim(d.querySelector('.cbot')!, [{ transform: 'none', opacity: 1 }, { transform: 'translate(5px,10px) rotate(25deg)', opacity: 0 }], { duration: 300, easing: 'ease-out', fill: 'forwards' })
-    vis[i] = true
-    anim(c, [{ transform: 'scale(.35)', opacity: 0, borderRadius: '50%' }, { transform: 'scale(1.04)', opacity: 1, borderRadius: '14px', offset: 0.7 }, { transform: 'scale(1)', opacity: 1, borderRadius: '14px' }], { duration: 360, easing: 'cubic-bezier(.3,.7,.3,1)' })
-    await sleep(300)
-    d.remove()
-  })()))
+/** Cards (in `layer`, a frozen copy) fold into capsules and fly back into the chest. */
+function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back) {
+  const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
+  const M = mouth(svg)
+  const S0 = 30
+  const jobs: Promise<unknown>[] = []
+  cards.forEach((c, k) => {
+    const r = c.getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    const d0 = k * FLY.stag
+    const pull = `translate(${(M.x - cx) * 0.16}px,${(M.y - cy) * 0.16}px) scale(.32)`
+    jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: pull, offset: 0.32 }, { opacity: 0, transform: pull }], { duration: dur, delay: d0, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' }).finished)
+    if (c.classList.contains('empty')) return
+    const cp = capEl(c.dataset.c || '', S0)
+    const dx = M.x - cx
+    const dy = M.y - cy
+    const ax = dx * 0.55
+    const ay = dy * 0.55 - 40 - (k % 3) * 5
+    cp.style.left = `${cx - S0 / 2}px`
+    cp.style.top = `${cy - S0 / 2}px`
+    const a = anim(cp, [{ transform: 'scale(.5)', opacity: 0 }, { transform: 'scale(1)', opacity: 1, offset: 0.24 }, { transform: `translate(${ax}px,${ay}px) scale(.78) rotate(90deg)`, offset: 0.6 }, { transform: `translate(${dx}px,${dy}px) scale(.42) rotate(200deg)`, opacity: 1, offset: 0.9 }, { transform: `translate(${dx}px,${dy + 6}px) scale(.3) rotate(220deg)`, opacity: 0 }], { duration: dur, delay: d0, easing: 'cubic-bezier(.45,.05,.4,1)', fill: 'both' })
+    a.finished.then(() => cp.remove(), () => cp.remove())
+    jobs.push(a.finished)
+  })
+  return Promise.all(jobs).catch(() => {})
 }
-/** Cards fold into capsules and fly back into tray p. */
-async function flyIn(p: number) {
-  const its = [0, 1, 2, 3, 4, 5].filter(i => L.caps[p]?.[i] && vis[i])
-  await Promise.all(its.slice().reverse().map((i, k) => (async () => {
-    await sleep(k * 55)
-    const cap = L.caps[p][i]
-    const c = cardEl(i)
-    if (!c) { L.show[p][i] = true; return }
-    const b = c.getBoundingClientRect()
-    const a = pocketScr(p, i)
-    await anim(c, [{ transform: 'scale(1)', opacity: 1, borderRadius: '14px' }, { transform: 'scale(.3)', opacity: 0, borderRadius: '50%' }], { duration: 240, easing: 'ease-in', fill: 'forwards' }).finished
-    c.getAnimations().forEach(x => x.cancel())
-    vis[i] = false
-    const d = flycap(a.r, cap)
-    const sx = b.left + b.width / 2 - a.r
-    const sy = b.top + b.height / 2 - a.r
-    const ex = a.x - a.r
-    const ey = a.y - a.r
-    const sc = 20 / a.r
-    const kf: Keyframe[] = []
-    for (let n = 0; n <= 14; n++) {
-      const tt = n / 14
-      const u = 1 - tt
-      const cx = (sx + ex) / 2
-      const cy = Math.min(sy, ey) - 50
-      kf.push({ transform: `translate(${u * u * sx + 2 * u * tt * cx + tt * tt * ex}px,${u * u * sy + 2 * u * tt * cy + tt * tt * ey}px) scale(${sc + (1 - sc) * tt}) rotate(${(1 - tt) * -260 - 24}deg)` })
-    }
-    await anim(d, kf, { duration: 480, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).finished
-    L.show[p][i] = true
-    paint()
-    d.remove()
-  })()))
-  for (let i = 0; i < 6; i++) vis[i] = false
+/** The chest reacts (transform only). */
+function pulse(delay = 0) {
+  if (fchest.value) anim(fchest.value, [{ transform: 'none' }, { transform: 'translateY(1px) scale(1.012,.985)', offset: 0.4 }, { transform: 'none' }], { duration: 260, delay: delay + FLY.out * 0.3, easing: 'ease-out' })
 }
-function instantOpen() {
-  const p = curPage()
-  reset(true)
-  for (let j = 1; j <= Cg.N; j++) L.show[j] = L.show[j].map(() => j !== p)
-  paint()
-  shown.value = p
-  for (let i = 0; i < 6; i++) vis[i] = true
+function wiggle() {
+  const lid = svgEl.value?.querySelector('.clid')
+  if (!lid || busy) return
+  tween(420, (_e, tt) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 - Math.sin(tt * Math.PI) * 18 * (1 - tt * 0.4)) }, tt => tt).then(() => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104) })
 }
-async function open() {
-  if (busy.value || isOpen.value || !caseMode.value || !items.value.length) return
-  busy.value = true
-  const G = CASE.geo(Cg)
-  const p = curPage()
-  for (let i = 0; i < 6; i++) vis[i] = false
-  await tween(200, (e) => { L.latch = e; paint() })
-  await movePart(() => L.lid, (v) => { L.lid = v }, { dx: G.stashDX, z: 0 }, G.caseTop + 16, 720)
-  let zz = Cg.lidH
-  for (let j = 1; j < p; j++) { await movePart(() => L.trays[j], (v) => { L.trays[j] = v }, { dx: G.stashDX, z: zz }, G.caseTop + 16 + zz, 560); zz += Cg.th - 2 }
-  isOpen.value = true
-  await flyOut(p)
-  busy.value = false
+/** Frozen copy of the current grid (the old cards fly back from it while the new grid is already rendered). */
+function ghost() {
+  const g = grid.value
+  const host = rootEl.value
+  if (!g || !host) return null
+  const c = g.cloneNode(true) as HTMLElement
+  c.querySelectorAll('iframe').forEach(f => f.remove())
+  const r = g.getBoundingClientRect()
+  const o = host.getBoundingClientRect()
+  c.classList.add('ghost')
+  c.removeAttribute('data-v-app')
+  c.style.cssText = `position:absolute;left:${r.left - o.left}px;top:${r.top - o.top}px;width:${r.width}px;height:${r.height}px;margin:0;pointer-events:none;z-index:0`
+  host.appendChild(c)
+  return c
 }
-async function close(fast = false) {
-  if (busy.value || !isOpen.value) return
-  busy.value = true
-  const G = CASE.geo(Cg)
-  const p = curPage()
-  await flyIn(p)
-  for (let j = p - 1; j >= 1; j--) await movePart(() => L.trays[j], (v) => { L.trays[j] = v }, { dx: 0, z: G.home(j) }, G.caseTop + 20 + Cg.lidH + (j - 1) * (Cg.th - 2), fast ? 380 : 520)
-  await movePart(() => L.lid, (v) => { L.lid = v }, { dx: 0, z: G.caseTop }, G.caseTop + 18, fast ? 460 : 640)
-  await tween(220, (e) => { L.latch = 1 - e; paint() }, easeOutBack)
-  if (svgEl.value) anim(svgEl.value, [{ transform: 'translateY(0)' }, { transform: 'translateY(2px) scaleY(.985)' }, { transform: 'translateY(0)' }], { duration: 240, easing: 'ease-out' })
-  isOpen.value = false
-  busy.value = false
+function flatIn() {
+  if (reduced()) return
+  document.querySelectorAll<HTMLElement>('.fav11 .fgrid .t').forEach((b, k) => { if (k < 80) anim(b, [{ opacity: 0, transform: 'scale(.7)' }, { opacity: 1, transform: 'none' }], { duration: 220, delay: k * 6, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'backwards' }) })
+}
+function enter() {
+  const fi = rootEl.value!.querySelector<HTMLElement>('.finfo')!
+  anim(fi, [{ opacity: 0, transform: 'translateX(10px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
+  anim(fchest.value!, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
+  anim(fmach.value!, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, delay: 40, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
+  const rest = rootEl.value!.querySelectorAll<HTMLElement>('.vs, .fempty')
+  rest.forEach(e => anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay: 60, fill: 'backwards' }))
+  if (caseMode.value) flyOut(60)
+  else flatIn()
+}
+/** 扭蛋 → here: the big machine shrinks into the small machine behind the chest (same time and curve as the chest). */
+function machIn(src: DOMRect) {
+  const el = fmach.value!
+  const E = el.getBoundingClientRect()
+  const M = msvg.value!.querySelector('.mach')!.getBoundingClientRect()
+  const s = src.width / M.width
+  const tx = src.left - E.left - s * (M.left - E.left)
+  const ty = src.top - E.top - s * (M.top - E.top)
+  const sh = msvg.value!.querySelector<SVGGElement>('.m-sh')!
+  sh.style.opacity = '0'
+  el.style.transformOrigin = '0 0'
+  anim(sh, [{ opacity: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1 }], { duration: 440 }).finished.then(() => { sh.style.opacity = '' })
+  return anim(el, [{ transform: `translate(${tx}px,${ty}px) scale(${s})` }, { transform: 'none' }], { duration: 440, easing: 'cubic-bezier(.2,.8,.2,1)' }).finished.then(() => {
+    el.style.transformOrigin = ''
+    anim(el, [{ transform: 'none' }, { transform: 'translateY(.6px)' }, { transform: 'none' }], { duration: 180, easing: 'ease-out' })
+  })
+}
+/** 扭蛋 → here: the small chest beside the machine grows into this chest (lid opening on the way), then capsules fly out. */
+function morphIn(src: DOMRect, msrc: DOMRect | null) {
+  const el = fchest.value!
+  const svg = svgEl.value!
+  const E = el.getBoundingClientRect()
+  const B = svg.querySelector('.cbody')!.getBoundingClientRect()
+  const s = src.width / B.width
+  const tx = src.left - E.left - s * (B.left - E.left)
+  const ty = src.top - E.top - s * (B.top - E.top)
+  el.style.transformOrigin = '0 0'
+  if (msrc) machIn(msrc)
+  else anim(fmach.value!, [{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 160, fill: 'backwards' })
+  const lid = svg.querySelector('.clid')!
+  const glow = svg.querySelector<SVGElement>('.c-glow')
+  lid.innerHTML = CHEST.lid(CHEST.BIG, 0)
+  if (glow) glow.style.opacity = '0'
+  anim(el, [{ transform: `translate(${tx}px,${ty}px) scale(${s})` }, { transform: 'none' }], { duration: 440, easing: 'cubic-bezier(.2,.8,.2,1)' })
+  tween(440, (_e, tt) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 * easeOut(clamp01((tt - 0.15) / 0.85))); if (glow) glow.style.opacity = String(clamp01((tt - 0.4) / 0.6)) }, tt => tt)
+    .then(() => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104); if (glow) glow.style.opacity = ''; el.style.transformOrigin = '' })
+  const fi = rootEl.value!.querySelector<HTMLElement>('.finfo')!
+  anim(fi, [{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 120, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
+  rootEl.value!.querySelectorAll<HTMLElement>('.vs, .fempty').forEach(e => anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 160, fill: 'backwards' }))
+  if (caseMode.value) flyOut(300)
+  else flatIn()
 }
 async function goPage(n: number) {
-  const p = curPage()
-  if (!caseMode.value || busy.value || n < 1 || n > Cg.N || n === p) return
-  if (!isOpen.value) { page[R.favTab] = n; reset(false); return open() }
-  busy.value = true
-  const G = CASE.geo(Cg)
-  await flyIn(p)
-  if (n > p) {
-    let zz = Cg.lidH + (p - 1) * (Cg.th - 2)
-    for (let j = p; j < n; j++) { await movePart(() => L.trays[j], (v) => { L.trays[j] = v }, { dx: G.stashDX, z: zz }, G.caseTop + 16 + zz, 620); zz += Cg.th - 2 }
-  }
-  else {
-    for (let j = p - 1; j >= n; j--) await movePart(() => L.trays[j], (v) => { L.trays[j] = v }, { dx: 0, z: G.home(j) }, G.caseTop + 20 + Cg.lidH + (j - 1) * (Cg.th - 2), 620)
-  }
+  if (!caseMode.value || busy || n < 1 || n > nPages.value || n === curPage.value) return
+  busy = true
+  const g = ghost()
   page[R.favTab] = n
-  L.active = n
-  paint()
-  await flyOut(n)
-  busy.value = false
+  await nextTick()
+  const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
+  await Promise.all([b, flyOut(0)])
+  busy = false
 }
-const toggle = () => (isOpen.value ? close() : open())
 async function tab(k: FavTab) {
-  if (busy.value || k === R.favTab) return
-  if (isOpen.value) await close(true)
+  if (busy || k === R.favTab) return
+  busy = true
+  const wasCase = caseMode.value
+  const g = wasCase ? ghost() : null
   R.favTab = k
   R.folder = null
   clearSel()
   await nextTick()
-  reset(false)
-  if (caseMode.value) open()
+  const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
+  const o = caseMode.value ? flyOut(0) : (flatIn(), Promise.resolve())
+  await Promise.all([b, o])
+  busy = false
 }
-// Something saved / removed while the case is open: redraw in place.
-watch(() => items.value.length, async () => {
-  if (!caseMode.value || busy.value) return
-  await nextTick()
-  if (isOpen.value) instantOpen()
-  else reset(false)
-})
-// Arrow keys flip layers (only when no icon is selected in a flat tab).
+function toGacha() { S.swView = 'gacha'; setMode('swipe') }
+function handoff(to: string) {
+  toGachaNext = to === 'swipe' && S.swView === 'gacha' && !reduced()
+  if (!toGachaNext || !svgEl.value || !msvg.value) return
+  chestFx.from = svgEl.value.querySelector('.cbody')!.getBoundingClientRect()
+  machFx.from = msvg.value.querySelector('.mach')!.getBoundingClientRect()
+}
+/** Leaving 收藏 never blocks: the frozen layer animates while the next page is already live. */
+function exit(layer: HTMLElement, _to: string) {
+  const jobs: Promise<unknown>[] = []
+  const svg = layer.querySelector<SVGSVGElement>('.csvg')
+  layer.querySelectorAll('.ghost').forEach(g => g.remove())
+  const cm = !!layer.querySelector('.fbody10 .fgrid10')
+  if (toGachaNext) {
+    layer.querySelectorAll<HTMLElement>('.fchest,.fmach').forEach((e) => { e.style.opacity = '0' })
+    layer.querySelectorAll<HTMLElement>('.fc,.t').forEach((c, k) => jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.6)' }], { duration: 180, delay: Math.min(k, 30) * 10, easing: 'ease-in', fill: 'forwards' }).finished))
+    jobs.push(anim(layer, [{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: 80, fill: 'forwards' }).finished)
+    return Promise.all(jobs)
+  }
+  layer.querySelectorAll<HTMLElement>('.finfo,.dbar').forEach(e => jobs.push(anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished))
+  if (cm && svg) jobs.push(flyBack(layer.querySelector('.fbody10 .fgrid10')!, svg, 260))
+  else layer.querySelectorAll<HTMLElement>('.vs').forEach(e => anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }))
+  const lid = svg?.querySelector('.clid')
+  const glow = svg?.querySelector<SVGElement>('.c-glow')
+  if (lid) jobs.push(tween(300, (e) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOut))
+  jobs.push(anim(layer, [{ opacity: 1 }, { opacity: 0.8, offset: 0.3 }, { opacity: 0 }], { duration: 340, fill: 'forwards' }).finished)
+  return Promise.all(jobs)
+}
+// Arrow keys turn pages (only in the card tabs).
 function onKey(e: KeyboardEvent) {
   if (!caseMode.value || ['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName)) return
-  if (e.key === 'ArrowRight') { e.preventDefault(); goPage(curPage() + 1) }
-  if (e.key === 'ArrowLeft') { e.preventDefault(); goPage(curPage() - 1) }
+  if (e.key === 'ArrowRight') { e.preventDefault(); goPage(curPage.value + 1) }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); goPage(curPage.value - 1) }
 }
-function onSvgClick(e: MouseEvent) { const tb = (e.target as Element).closest('.ltab') as SVGGElement | null; if (tb) goPage(+tb.dataset.l!) }
-
-const cardTag = (idx: number) => tagOf(idx)
-function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
 onMounted(() => {
   focusApi.focus = () => input.value?.focus()
   document.addEventListener('keydown', onKey, true)
-  W.__fav = { get isOpen() { return isOpen.value }, get busy() { return busy.value }, get L() { return L }, get C() { return Cg }, goPage, open, close, tab }
-  reset(false)
-  if (caseMode.value) setTimeout(open, 200)
-  leaveHook.fav = async () => { if (isOpen.value) { while (busy.value) await sleep(40); await close(true) } }
+  svgEl.value!.innerHTML = CHEST.svg(CHEST.BIG, 104)
+  msvg.value!.innerHTML = GM.scene({})
+  pageFx.exit.fav = exit
+  pageFx.handoff.fav = handoff
+  W.__fav = { get busy() { return busy }, goPage, tab, get page() { return curPage.value } }
+  const src = chestFx.from
+  const msrc = machFx.from
+  chestFx.from = null
+  machFx.from = null
+  if (src && !reduced()) morphIn(src, msrc)
+  else enter()
 })
 onBeforeUnmount(() => {
   focusApi.focus = () => {}
   document.removeEventListener('keydown', onKey, true)
-  leaveHook.fav = null
-  document.querySelectorAll('.flycap').forEach(e => e.remove())
+  if (pageFx.exit.fav === exit) pageFx.exit.fav = null
+  if (pageFx.handoff.fav === handoff) pageFx.handoff.fav = null
 })
 const W = window as any
 </script>
 
 <template>
   <div class="body fav-v">
-    <div class="fav101">
+    <div ref="rootEl" class="fav101 fav11">
       <div class="fhead">
-        <div class="fchest cstage"><svg ref="svgEl" class="isosvg iso10 csvg" preserveAspectRatio="xMidYMid meet" @click="onSvgClick" /></div>
+        <div ref="fchest" class="fchest" @click="wiggle"><svg ref="svgEl" class="ink csvg" viewBox="-70 -128 178 214" preserveAspectRatio="xMidYMid meet" /></div>
+        <button ref="fmach" class="fmach" :title="t('toGacha')" @click="toGacha"><svg ref="msvg" class="ink msvg" :viewBox="GM.VB.mini.join(' ')" preserveAspectRatio="xMidYMax meet" /></button>
         <div class="finfo">
           <h3>{{ t('chestT') }}</h3>
           <div class="ftabs">
@@ -328,13 +325,11 @@ const W = window as any
           </div>
           <div class="frow">
             <template v-if="caseMode">
-              <button class="btn pri" :disabled="!items.length" @click="toggle"><UiIcon name="lucide:package-open" /><span>{{ isOpen ? t('closeChest') : t('openChest') }}</span></button>
               <span class="sp" />
               <div class="fpager">
-                <button class="pg" :disabled="curPage() <= 1 || busy" :title="t('prevLayer')" @click="goPage(curPage() - 1)"><UiIcon name="lucide:chevron-left" /></button>
-                <span class="pl"><b>{{ curPage() }}</b> / {{ nLayers }}</span>
-                <span class="pdots"><i v-for="n in nLayers" :key="n" :class="{ on: n === curPage() }" /></span>
-                <button class="pg" :disabled="curPage() >= nLayers || busy" :title="t('nextLayer')" @click="goPage(curPage() + 1)"><UiIcon name="lucide:chevron-right" /></button>
+                <button class="pg" :disabled="curPage <= 1" :title="t('prevPage')" @click="goPage(curPage - 1)"><UiIcon name="lucide:chevron-left" /></button>
+                <span class="pl"><b>{{ curPage }}</b> / {{ nPages }}</span>
+                <button class="pg" :disabled="curPage >= nPages" :title="t('nextPage')" @click="goPage(curPage + 1)"><UiIcon name="lucide:chevron-right" /></button>
               </div>
             </template>
             <label v-else class="isearch sm"><UiIcon name="lucide:search" /><input ref="input" v-model="R.q" :placeholder="t('phFav')" spellcheck="false"><kbd>{{ modKey.trim() }}K</kbd></label>
@@ -345,18 +340,18 @@ const W = window as any
       <!-- saved icon sets / UI libraries: 6 cards per layer -->
       <div v-if="caseMode" class="fbody10">
         <div ref="grid" class="fgrid10">
-          <template v-for="c in cardItems" :key="`${R.favTab}:${c.i}`">
+          <template v-for="c in cardItems" :key="`${R.favTab}:${curPage}:${c.i}`">
             <div v-if="!c.id" class="fc empty" :data-i="c.i" />
-            <div v-else-if="R.favTab === 'sets'" class="fc set" :class="{ hid: !vis[c.i] }" :data-i="c.i" @click="vis[c.i] && openCard(c.id)">
+            <div v-else-if="R.favTab === 'sets'" class="fc set" :data-i="c.i" :data-c="cardTag(c.idx)" @click="openCard(c.id)">
               <div class="fh"><i class="fdot" :style="{ background: cardTag(c.idx) }" /><b>{{ INFO[c.id]?.name || c.id }}</b><small>{{ N(INFO[c.id]?.total) }}</small>
                 <button class="ib hrt" :title="t('unfavd')" @click.stop="likeSet(c.id)"><Heart on /></button></div>
               <div class="fi"><UiIcon v-for="n in (setIcons[c.id] || (INFO[c.id]?.samples || []).map(x => `${c.id}:${x}`)).slice(0, 10)" :key="n" :name="n" /></div>
               <div class="fm">{{ [INFO[c.id]?.author?.name, INFO[c.id]?.license?.title].filter(Boolean).join(' · ') }}</div>
             </div>
-            <div v-else class="fc lib" :class="{ hid: !vis[c.i] }" :data-i="c.i" @click="vis[c.i] && openCard(c.id)">
+            <div v-else class="fc lib" :data-i="c.i" :data-c="cardTag(c.idx)" @click="openCard(c.id)">
               <div class="fh"><i class="fdot" :style="{ background: cardTag(c.idx) }" /><b>{{ c.id.includes('/') ? ukl(c.id.split('/')[1]) : UI(c.id)?.name }}</b><small>{{ c.id.includes('/') ? UI(libOf(c.id))?.name : UI(c.id)?.fw }}</small>
                 <button class="ib hrt" :title="t('unfavd')" @click.stop="likeUI(c.id)"><Heart on /></button></div>
-              <div v-if="c.id.includes('/') && vis[c.i]" class="fdemo"><DemoFrame :lib="libOf(c.id)" :keys="[c.id.split('/')[1]]" cls="one" /></div>
+              <div v-if="c.id.includes('/')" class="fdemo"><DemoFrame :lib="libOf(c.id)" :keys="[c.id.split('/')[1]]" cls="one" /></div>
               <div v-else-if="!c.id.includes('/')" class="uiprev" :style="{ '--lc': cardTag(c.idx) }"><span class="u-btn">Button</span><span class="u-tog"><i /></span><span class="u-inp" /><span class="u-chk"><UiIcon name="lucide:check" /></span><span class="u-tab"><b /><i /><i /></span><span class="u-sld"><b /><i /></span></div>
             </div>
           </template>
