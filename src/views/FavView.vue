@@ -15,7 +15,7 @@ import { focusApi } from '../lib/swipe'
 import { modKey } from '../lib/native'
 import { chestFx, machFx, openPop, pageFx, reduced } from '../lib/fx'
 import { icons as setIcons, pickIcons } from '../lib/deck'
-import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, tween } from '../lib/iso'
+import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, sleep, tween } from '../lib/iso'
 
 // 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
 // cards per page (3 × 2). The open chest holds a static heap of capsules (v0.4.1). Entering: 6 capsules leave the heap
@@ -82,9 +82,38 @@ const N = (n?: number) => Number(n || 0).toLocaleString()
 const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
+// ---- the heap in the chest (v0.4.2): one capsule per favourite of this tab that is NOT out on the visible page,
+// so heap + cards = the real count (drawn up to CHEST.MAXPILE). 图标 = the icons of the current group (they are not
+// flown out); 最近 is copy history, not favourites → empty chest. During flights `pend` keeps the count honest:
+// `out` = cards of this page whose capsule has not left yet (still in the heap, on top), `back` = cards of the page
+// just turned away whose capsule has not landed yet (not in the heap yet).
+const pend = reactive({ out: new Set<number>(), back: new Set<number>() })
+const hcol = (id: string) => { let h = 7; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return INK.CAPCOL[h % INK.CAPCOL.length] }
+const pileCols = computed<string[]>(() => {
+  if (R.favTab === 'recent') return []
+  if (R.favTab === 'icons') return src.value.map(hcol)
+  const n = items.value.length
+  const a = (curPage.value - 1) * 6
+  const rest: string[] = []
+  const top: string[] = []
+  for (let i = 0; i < n; i++) {
+    if (i >= a && i < a + 6) { if (pend.out.has(i)) top.push(tagOf(i)) }
+    else if (!pend.back.has(i)) rest.push(tagOf(i))
+  }
+  return rest.concat(top) // the capsules about to leave sit on top of the heap
+})
+let pileStr = ''
+function drawPile(cols = pileCols.value) {
+  const g = svgEl.value?.querySelector(':scope>.chest>.cpile')
+  if (!g) return
+  const h = CHEST.pileSVG(CHEST.BIG, cols)
+  if (h !== pileStr) { g.innerHTML = h; pileStr = h }
+}
+watch(pileCols, c => drawPile(c), { flush: 'post' })
+
 /** Chest mouth in client coordinates. */
 function mouth(svg = svgEl.value!, k = 0) {
-  const q = CHEST.pileTop(CHEST.BIG)
+  const q = CHEST.pileTop(CHEST.BIG, Math.min(pileCols.value.length, CHEST.MAXPILE))
   const m = svg.getScreenCTM()!
   // spread the exits / landings over the heap so the capsules seem to come from (and sink into) different spots
   const sx = [-26, 18, -6, 30, -18, 6][k % 6]
@@ -117,6 +146,7 @@ function flyOut(delay = 0) {
   const jobs: Promise<unknown>[] = []
   const T = FLY.out
   const ARR = 0.7 // the capsule reaches the card at 70 %, then blooms
+  const base = (curPage.value - 1) * 6
   cards.forEach((c, k) => {
     const r = c.getBoundingClientRect()
     const cx = r.left + r.width / 2
@@ -124,6 +154,9 @@ function flyOut(delay = 0) {
     const d0 = delay + k * FLY.stag
     if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + T * 0.55, fill: 'backwards' }).finished); return }
     const M = mouth(undefined, k)
+    const idx = base + Number(c.dataset.i || k)
+    pend.out.add(idx)
+    void sleep(d0).then(() => { pend.out.delete(idx) }) // the capsule leaves the heap
     const s0 = Math.max(0.3, (M.s * 6.4 * 2) / S0) // starts at the size of a capsule in the heap
     const cp = capEl(c.dataset.c || '', S0)
     cp.style.left = `${cx - S0 / 2}px`
@@ -144,7 +177,7 @@ function flyOut(delay = 0) {
   return Promise.all(jobs).catch(() => {})
 }
 /** Cards (in `layer`, a frozen copy) fold into capsules that arc back and sink into the heap. */
-function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back) {
+function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, base = -1) {
   const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
   const S0 = 30
   const jobs: Promise<unknown>[] = []
@@ -170,6 +203,7 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back) {
     }
     const a = anim(cp, kf, { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
     a.finished.then(() => cp.remove(), () => cp.remove())
+    if (base >= 0) { const idx = base + Number(c.dataset.i || 0); a.finished.then(() => pend.back.delete(idx), () => pend.back.delete(idx)) } // lands in the heap
     jobs.push(a.finished)
   })
   return Promise.all(jobs).catch(() => {})
@@ -258,9 +292,11 @@ async function goPage(n: number) {
   if (!caseMode.value || busy || n < 1 || n > nPages.value || n === curPage.value) return
   busy = true
   const g = ghost()
+  const ob = (curPage.value - 1) * 6
+  if (g) for (let i = ob; i < Math.min(ob + 6, items.value.length); i++) pend.back.add(i)
   page[R.favTab] = n
   await nextTick()
-  const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
+  const b = g ? flyBack(g, undefined, FLY.back, ob).then(() => g.remove()) : Promise.resolve()
   await Promise.all([b, flyOut(FLY.overlap)])
   busy = false
 }
@@ -269,6 +305,8 @@ async function tab(k: FavTab) {
   busy = true
   const wasCase = caseMode.value
   const g = wasCase ? ghost() : null
+  pend.out.clear()
+  pend.back.clear()
   R.favTab = k
   R.folder = null
   clearSel()
@@ -317,6 +355,7 @@ onMounted(() => {
   focusApi.focus = () => input.value?.focus()
   document.addEventListener('keydown', onKey, true)
   svgEl.value!.innerHTML = CHEST.svg(CHEST.BIG, 104)
+  drawPile()
   msvg.value!.innerHTML = GM.scene({})
   pageFx.exit.fav = exit
   pageFx.handoff.fav = handoff

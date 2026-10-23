@@ -435,13 +435,18 @@ async function back() {
   busy = false
 }
 
+// v0.4.2: the small chest's heap = the real number of favourites (icons + sets + UI), never more (drawn up to CHEST.MAXPILE).
+// It only shows while the lid is open (keep / arriving from 收藏); a kept capsule joins it after the lid closes.
+const favTotal = computed(() => S.favs.length + S.sets.length + S.uiFav.length)
+watch(favTotal, (n) => { const g = svgEl.value?.querySelector('.chestg .cpile'); if (g) g.innerHTML = CHEST.pileSVG(CHEST.SMALL, n) })
+
 const label = (it: Item) => it.k === 'set' ? shortName(it.v) : it.k === 'comp' ? `${UI(it.v.split('/')[0]).name} ${ukl(it.v.split('/')[1])}` : UI(it.v).name
 const kindK = (it: Item) => t(it.k === 'set' ? 'kSet' : it.k === 'comp' ? 'kComp' : 'kLib')
 const dotOf = (it: Item) => it.k === 'set' ? '' : UICOL[it.v.split('/')[0]] || ''
 
 onMounted(() => {
   svg = svgEl.value!
-  svg.innerHTML = GM.scene({ chest: true })
+  svg.innerHTML = GM.scene({ chest: true, pile: favTotal.value })
   layout()
   ro = new ResizeObserver(() => layout())
   ro.observe(stage.value!)
