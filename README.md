@@ -32,8 +32,8 @@ Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：�
 - **复制**：SVG、PNG 图片、Vue、React、UnoCSS、Iconify 名称、Data URL 等 8 种格式；可设为单击即复制；全局图标颜色
 - **资源**：「图标库」按分类列出全部 Iconify 图标集，页内搜索高亮匹配；「组件库」收录 18 个常用 React / Vue 组件库，shadcn/ui、Mantine、Element Plus、Naive UI 可在「示例面板」「全部组件」里直接操作真实组件；搜「弹窗」「tabs」等可横向对比；一键复制安装命令
 - **划一划**：像刷卡片一样逛图标库、组件和组件库（或复盘「我的宝箱」），拖动带旋转、印章和回弹，连击有粒子；点阵进度、筛选胶囊；<kbd>R</kbd> 换一批、<kbd>Z</kbd> 撤回
-- **图标扭蛋机**：手绘墨线等距风格，红色顶帽、玻璃球里装满双色胶囊，机身铭牌印着 Icônette 标志。拖动旋钮转一圈（或按空格），机身晃动、出蛋口滚出一枚胶囊，开壳亮出一个图标集或组件；收下就跳进机器旁的小宝箱，放回就飞回球里
-- **灵感宝箱（收藏）**：任何地方收藏，图标都会变成一枚胶囊飞进标题栏的宝箱；收藏页的宝箱常开，6 枚胶囊飞出变成一页 6 张卡片（图标库、组件库与组件），翻页时 6 张飞回、6 张飞出同时进行；宝箱左后方的小扭蛋机一点直达扭蛋，两页之间宝箱和扭蛋机互相变形过去；图标（可建分组）和最近复制是图标网格；收藏可导出成 JSON、换电脑再导入（合并或替换）；「其他风格」一键看同名图标在别的图标集里的样子
+- **图标扭蛋机**：手绘墨线等距风格，红色顶帽、玻璃球里装满双色胶囊，机身铭牌印着 Icônette 标志。机器居中，「扭一下」按钮贴在旋钮旁、隔几秒轻轻晃一下。拖动旋钮转一圈（或按空格 / 点按钮），机身晃动并缩小移到左边，出蛋口滚出一枚胶囊，飞到右侧开壳亮出一个图标集或组件，开壳的胶囊一直停在卡片右上角；收下就跳进机器旁的小宝箱，放回就飞回球里，机器随后回到中间
+- **灵感宝箱（收藏）**：任何地方收藏，图标都会变成一枚胶囊飞进标题栏的宝箱；收藏页的宝箱常开、箱里堆满双色胶囊，6 枚胶囊从胶囊堆里沿弧线飞出变成一页 6 张卡片（图标库、组件库与组件），翻页时 6 张飞回、6 张飞出同时进行；宝箱左后方的小扭蛋机一点直达扭蛋，两页之间宝箱和扭蛋机互相变形过去；图标（可建分组）和最近复制是图标网格；收藏可导出成 JSON、换电脑再导入（合并或替换）；「其他风格」一键看同名图标在别的图标集里的样子
 - **速取窗口**：在任何应用里按 <kbd>Alt</kbd> / <kbd>⌥</kbd> + <kbd>Space</kbd> 弹出小窗，搜索、回车复制并自动收起；快捷键可在菜单里重新录制
 - **拖出 SVG**：把图标直接拖到文件夹、Figma、设计稿或聊天窗口，得到一个 `.svg` 文件
 - **桌面体验**：系统托盘（显示 / 速取 / 退出）、关闭时留在托盘、开机启动、单实例、应用内检查更新、页面切换从不等待动画、深浅色跟随系统、尊重「减少动态效果」
@@ -47,12 +47,12 @@ Icônette 是 [Icônes](https://github.com/antfu/icones) 的轻量桌面版：�
     <td align="center"><img src="docs/screenshots/resources.png" width="380" alt="资源 · 图标库"><br><sub>资源：图标库 / 组件库 + 页内搜索</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/gacha.png" width="380" alt="图标扭蛋机"><br><sub>图标扭蛋机：转一圈旋钮，开一枚图标集</sub></td>
-    <td align="center"><img src="docs/screenshots/gacha-turn.png" width="380" alt="胶囊开壳"><br><sub>胶囊从出蛋口滚出、弹起开壳变成卡片</sub></td>
+    <td align="center"><img src="docs/screenshots/gacha.png" width="380" alt="图标扭蛋机"><br><sub>图标扭蛋机：机器居中，「扭一下」就贴在旋钮旁</sub></td>
+    <td align="center"><img src="docs/screenshots/gacha-turn.png" width="380" alt="胶囊开壳"><br><sub>扭一下机器移到左边，开壳的胶囊停在卡片右上角</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/chest.png" width="380" alt="灵感宝箱"><br><sub>灵感宝箱：6 枚胶囊飞出 = 一页 6 张卡片</sub></td>
-    <td align="center"><img src="docs/screenshots/chest-dark.png" width="380" alt="灵感宝箱 · 组件库"><br><sub>组件库（深色）</sub></td>
+    <td align="center"><img src="docs/screenshots/chest.png" width="380" alt="灵感宝箱"><br><sub>灵感宝箱：箱里堆满胶囊，6 枚飞出 = 一页 6 张卡片</sub></td>
+    <td align="center"><img src="docs/screenshots/chest-dark.png" width="380" alt="灵感宝箱 · 深色"><br><sub>深色模式</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/swipe.png" width="380" alt="划一划"><br><sub>划一划：拖动卡片，「收下」印章，点阵进度</sub></td>
@@ -139,6 +139,7 @@ preview/             HTML 设计原型
 - [x] v0.2 新界面：标题栏、页内搜索、范围弹层、图标墙首页、划一划新头部与卡片物理、图标扭蛋机、灵感宝箱
 - [x] v0.3：等距爆炸图扭蛋机、扭蛋收纳盒（每层 6 枚）、首页左下角坞与迷你扭蛋机、浮岛搜索框、结果页键位提示
 - [x] v0.4：手绘墨线扭蛋机（旋钮 + 晃动 + 出蛋）、灵感宝箱收藏页、不等待的页面切换与共享元素过渡、自定义快捷键、收藏导入导出、检查更新
+- [x] v0.4.1：宝箱胶囊堆、更从容的胶囊飞行与翻页、扭蛋机居中 + 旋钮旁「扭一下」、扭蛋时机器左移、开壳胶囊停在卡片右上角
 
 ## 致谢
 
