@@ -84,12 +84,13 @@ const N = (n?: number) => Number(n || 0).toLocaleString()
 const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
-// ---- the heap in the chest (v0.4.3 physics, see lib/heap.ts; v0.4.4 count rule)
-// The chest is a decorative, mostly-full box: at rest it holds min(all favourites, 13) capsules (v0.4.5: bigger capsules, was 24) — icons + sets + UI,
-// independent of the tab and of the cards on show; 0 favourites = empty. Flights only borrow capsules: entering a
-// card tab takes the page's 6 capsules off the top (they were put there on top of the resting heap), a page turn / a
-// switch between card tabs takes 6 out and puts the old 6 back (the heap dips during the flight, then is full again),
-// leaving a card tab drops the old cards in at the top where they vanish. Capsules put back land on top.
+// ---- the heap in the chest (v0.4.3 physics, see lib/heap.ts; v0.4.6 count rule)
+// v0.4.6: the box base B = min(all favourites, 13) (icons + sets + UI). The cards on show came OUT of the box, so the
+// resting heap = B − (cards on screen), floor 0. Entering a card tab: the page's capsules (the top of a B heap) fly out
+// and the box stays that much lower. A page turn / a switch between card tabs: ALL old cards fly back in (landing on
+// top) and the new ones fly out, so the count only dips during the flight. A grid tab / an empty card tab / leaving:
+// every card flies back in → B. Nothing tops the heap back up after a flight (v0.4.4/0.4.5 put the page's capsules on
+// top of a full B heap and snapped back to B after every flight — the "refill" bug).
 let stack: Tok[] = []
 /** Tokens that leave on this turn but whose flight has not started yet (still drawn in the heap). */
 const outQ = new Set<string>()
@@ -98,7 +99,11 @@ const donor = new Map<string, string>()
 const nodes = new Map<string, SVGGElement & { _q?: number[], _tw?: number }>()
 const tokKey = (id: string) => `${R.favTab}:${id}`
 const tokOf = (idx: number): Tok => ({ k: tokKey(items.value[idx]), c: tagOf(idx) })
-const restN = () => pileN(favIds().length)
+const baseN = () => pileN(favIds().length)
+/** Cards currently on screen (they came out of the box). */
+const shownN = () => (caseMode.value ? cardItems.value.filter(c => c.id).length : 0)
+/** Resting heap: B − cards out, floor 0. */
+const restN = () => Math.max(0, baseN() - shownN())
 /** The visible page's capsules (they are about to fly out to the cards). */
 function pageToks() {
   const a = (curPage.value - 1) * 6
@@ -110,19 +115,23 @@ function pageToks() {
 function buildHeap(withPage: boolean) {
   outQ.clear()
   donor.clear()
-  stack = restN() ? restTokens(favIds()) : []
-  if (withPage && caseMode.value && stack.length) stack = stack.concat(pageToks())
+  // v0.4.6: B capsules in all; with cards about to fly out, the page's own capsules are the top ones of those B
+  const all = restTokens(favIds())
+  const pt = withPage && caseMode.value ? pageToks() : []
+  stack = all.slice(0, Math.max(0, all.length - pt.length)).concat(pt.slice(0, all.length))
   nodes.forEach(n => n.remove())
   nodes.clear()
   renderHeap(false)
 }
-/** Favourites added / removed while nothing flies: add or take capsules on top so the resting count is right. */
+/** Favourites added / removed while nothing flies: add or take capsules on top so the resting count (B − cards out)
+ *  is right. After a flight this is a no-op (the flights themselves keep the count). */
 function syncCount() {
   const want = restN()
   if (stack.length === want) return
   if (stack.length > want) { stack = stack.slice(0, want); renderHeap(true); return }
   const have = new Set(stack.map(t => t.k))
   const add = restTokens(favIds()).filter(t => !have.has(t.k)).slice(-(want - stack.length))
+  if (!add.length) return
   stack = stack.concat(add)
   renderHeap(true, new Set(add.map(t => t.k)))
 }
@@ -204,6 +213,16 @@ function land(t: Tok) {
   if (stack.some(x => x.k === t.k)) return
   stack.push(t)
   renderHeap(true, new Set([t.k]))
+}
+/** Leaving 收藏: a capsule lands in the frozen copy's heap (drawn on top, static; the layer fades out). */
+function landFrozen(svg: SVGSVGElement, c: ReturnType<typeof settle>[number]) {
+  const g = svg.querySelector(':scope>.chest>.cpile')
+  if (!g) return
+  const n = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  n.dataset.k = c.k
+  n.setAttribute('transform', tf(capXY(c)))
+  n.innerHTML = capInner(c)
+  g.appendChild(n)
 }
 /** Top of the heap in client coordinates (for capsules that only drop in and vanish: tab switch, leaving). */
 function heapTop(svg: SVGSVGElement, k = 0) {
@@ -363,12 +382,12 @@ function launchOut(c: HTMLElement, key: string, k: number): Promise<unknown> | u
  *  the heap and join it; otherwise (switching to a grid tab / leaving) they drop in at the top of the heap and vanish.
  *  v0.4.4: the capsule is there from the first frame and starts moving at once (the card shrinks into it over the
  *  first ~10 %), so the way back never waits for the cards to fade. */
-function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = false, join = 6) {
+function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = false, join = 99) {
   const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
   const jobs: Promise<unknown>[] = []
   const FOLD = 0.1
   const ret: Tok[] = cards.filter(c => !c.classList.contains('empty') && c.dataset.k).map(c => ({ k: c.dataset.k!, c: c.dataset.c || '' }))
-  // as many as leave on this turn join the heap (the count stays put); any extra drop in and vanish
+  // v0.4.6: every card going home joins the heap (they came out of it): the box ends at B − the new page's cards
   const spots = turn ? landing(ret.slice(0, join)) : null
   const m = svg.getScreenCTM()!
   const live = svg === svgEl.value
@@ -407,7 +426,7 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = fals
     })
     const a = anim(cp, zJumps(kf), { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
     const done = () => { cp.remove(); if (dip) occOff(svg) }
-    a.finished.then(() => { done(); if (sp) land({ k: key, c: sp.c }) }, done)
+    a.finished.then(() => { done(); if (sp) { if (live) land({ k: key, c: sp.c }); else landFrozen(svg, sp) } }, done)
     jobs.push(a.finished)
   })
   return Promise.all(jobs).catch(() => {})
@@ -508,8 +527,7 @@ async function goPage(n: number) {
  *  of the heap as it will be once those are out — and land last, on top. */
 async function swap(g: HTMLElement | null) {
   const o = flyOut(FLY.lead)
-  const nOut = cardItems.value.filter(c => c.id).length
-  const b = g ? flyBack(g, undefined, FLY.back, true, nOut).then(() => g.remove()) : Promise.resolve()
+  const b = g ? flyBack(g, undefined, FLY.back, true).then(() => g.remove()) : Promise.resolve()
   await Promise.all([b, o])
   donor.clear()
   syncCount()
@@ -523,16 +541,10 @@ async function tab(k: FavTab) {
   R.folder = null
   clearSel()
   await nextTick()
-  // v0.4.4: the heap does not change with the tab (min(all favourites, 13) at rest)
+  // v0.4.6: old cards fly back in (and stay), new cards fly out (borrowing the top capsules): box = B − new cards
   if (wasCase && caseMode.value) await swap(g)
   else {
-    if (caseMode.value && stack.length) {
-      // from a grid tab: the page's capsules are put on top of the heap (a quick fade) and fly out at once
-      const add = pageToks()
-      stack = stack.concat(add)
-      renderHeap(false, undefined, new Set(add.map(t => t.k)))
-    }
-    const b = g ? flyBack(g, undefined, 640).then(() => g.remove()) : Promise.resolve()
+    const b = g ? flyBack(g, undefined, 640, true).then(() => g.remove()) : Promise.resolve()
     const o = caseMode.value ? flyOut(g ? 140 : 60) : (flatIn(), Promise.resolve())
     await Promise.all([b, o])
     donor.clear()
@@ -540,7 +552,7 @@ async function tab(k: FavTab) {
   }
   busy = false
 }
-// favourites changed outside a flight (like / unlike, import): the resting heap follows the total (≤ 13)
+// favourites changed outside a flight (like / unlike, import): the resting heap follows B − cards out
 watch(() => favIds().length, () => { if (!busy) syncCount() })
 function toGacha() { S.swView = 'gacha'; setMode('swipe') }
 function handoff(to: string) {
@@ -562,7 +574,8 @@ function exit(layer: HTMLElement, _to: string) {
     return Promise.all(jobs)
   }
   layer.querySelectorAll<HTMLElement>('.finfo,.dbar').forEach(e => jobs.push(anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished))
-  if (cm && svg) jobs.push(flyBack(layer.querySelector('.fbody10 .fgrid10')!, svg, 420))
+  // v0.4.6: the cards go home and stay in the box (the frozen heap ends at B again)
+  if (cm && svg) jobs.push(flyBack(layer.querySelector('.fbody10 .fgrid10')!, svg, 420, true))
   else layer.querySelectorAll<HTMLElement>('.vs').forEach(e => anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }))
   const lid = svg?.querySelector('.clid')
   const glow = svg?.querySelector<SVGElement>('.c-glow')
@@ -586,7 +599,7 @@ onMounted(() => {
   msvg.value!.innerHTML = GM.scene({})
   pageFx.exit.fav = exit
   pageFx.handoff.fav = handoff
-  W.__fav = { get busy() { return busy }, goPage, tab, get page() { return curPage.value }, get pile() { return pileCount() }, get drawn() { return nodes.size } }
+  W.__fav = { get busy() { return busy }, goPage, tab, get page() { return curPage.value }, get pile() { return pileCount() }, get base() { return baseN() }, get shown() { return shownN() }, get drawn() { return nodes.size } }
   const src = chestFx.from
   const msrc = machFx.from
   chestFx.from = null

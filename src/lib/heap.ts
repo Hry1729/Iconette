@@ -114,9 +114,9 @@ export function heapSVG(stack: Tok[], C: Box = CHEST.BIG) {
     .map(c => { const q = capXY(c); return `<g transform="translate(${f(q[0])},${f(q[1])})">${capInner(c, C)}</g>` }).join('')
 }
 
-// ---- v0.4.4 count rule: the box is a decorative, mostly-full box. Its resting heap = min(all favourites, MAXPILE)
-// capsules (icons + sets + UI, whatever tab / page is shown); 0 favourites = empty. Page turns and tab switches only
-// borrow capsules for the flight and give them back.
+// ---- count rule (v0.4.6): the box base B = min(all favourites, MAXPILE) capsules (icons + sets + UI); 0 favourites
+// = empty. Cards on screen in 收藏 came out of the box, so its resting heap there is B − cards out (floor 0); with no
+// cards out (grid tab, empty tab, the small chest beside the gashapon) it shows B.
 export const PILE_MAX = CHEST.MAXPILE
 export const pileN = (total: number) => Math.max(0, Math.min(PILE_MAX, Math.floor(total || 0)))
 /** Colour of a favourite id (stable). */

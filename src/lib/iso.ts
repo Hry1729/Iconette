@@ -257,7 +257,7 @@ function bodyFront(C){const {x,y,z,w,d,h}=C,zt=z+h,k=w/104;let s='';
   return s}
 function shadow(C){const {x,y,w,d}=C,e=w*.1;return poly([[x-e*.2,y-e*.2,0],[x+w+e*.6,y-e*.2,0],[x+w+e*.6,y+d+e*1.6,0],[x-e*.2,y+d+e*1.6,0]],'m-shadow')}
 /* v0.4.4 · 箱内胶囊堆由 lib/heap.ts 模拟并渲染（大箱子 FavView，小箱子 GachaView 传入 o.pile 字符串）。
-   数量规则：min(全部收藏数, MAXPILE)，与标签 / 页码无关；0 个收藏 = 空箱。
+   数量规则（v0.4.6）：基数 B = min(全部收藏数, MAXPILE)；收藏页里飞出去变成卡片的胶囊不在箱里，静止时 = B − 屏上卡片数（≥0）；0 个收藏 = 空箱。
    v0.4.5 · 胶囊放大约 1.8 倍（地面一层约 9 个），满箱 = MAXPILE 个，约 2/3 满、中间微微隆起；
    平整的箱底在檐口下 FLOOR × h，胶囊都落在箱底 / 其它胶囊上，前壁挡住下半截，只露出顶部。 */
 const MAXPILE=13;
