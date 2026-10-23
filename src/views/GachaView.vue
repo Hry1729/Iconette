@@ -9,12 +9,13 @@ import { SNAP, UI, UICOL, ukl } from '../lib/ui-libs'
 import { toast } from '../lib/actions'
 import { gachaFx, swipeApi } from '../lib/swipe'
 import { D, type Item, buildDeck, decide, gachaToday, item, pickIcons, putBack, restart } from '../lib/deck'
-import { bumpChest, reduced } from '../lib/fx'
-import { CASE, GACHA, GACHA_VB, GLYPH_GACHA, ISO, P3, PILE_PICK, RM, anim, clamp01, easeIO, easeOut, easeOutBack, gachaScene, sleep, tween } from '../lib/iso'
+import { bumpChest, chestFx, machFx, pageFx, reduced } from '../lib/fx'
+import { CHEST, GLYPH_GACHA, GM, INK, anim, clamp01, easeIO, easeOut, easeOutBack, sleep, tween } from '../lib/iso'
 
-// 图标扭蛋机 (v10): an exploded-axonometric machine. First entry per app launch: assembled → explode → hold 1 s →
-// reassemble. Drag the red crank a full turn (or Space): gears turn, a capsule drops into the exit tray, pops out,
-// opens and becomes the card. Keep → it rolls into the capsule case beside the machine; put back → it flies back in.
+// 图标扭蛋机 (v11): a hand-inked isometric gashapon. Turn the knob (drag a full turn, Space, or the button): the body
+// shakes and the capsules jiggle → the exit flap swings out and a capsule rolls onto the tray → it pops up, flies to the
+// card spot and splits open into the card. Keep → it hops into the small chest beside the machine; put back → it flies
+// back into the globe. Shared elements: home mini machine → this machine (FLIP); 收藏 ↔ here (chest + machine).
 const root = ref<HTMLElement>()
 const svgEl = ref<SVGSVGElement>()
 const card = ref<HTMLElement>()
@@ -22,69 +23,57 @@ const phase = ref<'idle' | 'busy' | 'reveal'>('idle')
 const ang = ref(0)
 const cur = ref<Item | null>(null)
 const curIcons = ref<string[]>([])
-const sfx = `gz${Math.random().toString(36).slice(2, 6)}`
 const stats = computed(() => ({ stock: D.list.length, today: gachaToday().n, kept: S.gacha.kept }))
 const angTxt = computed(() => `${Math.round(((ang.value % 360) + 360) % 360)}°`)
-/** Exposed for screenshots/tests: animation phase (flip / assembled / explode / hold / re / drop / roll / hop). */
 let busy = false
-let T = 0
 let svg: SVGSVGElement
 let big: HTMLElement | null = null
 let bigPos = { x: 0, y: 0 }
 let hiddenPc: SVGGElement | null = null
-let capc = { top: 'r', tag: '' }
+let cap = { c: '#e5484d', th: -24, m: 0.4 }
+const BR = 24
 const W = window as any
-const setPhase = (p: string) => { W.__gacha = { ...(W.__gacha || {}), phase: p, T } }
+/** Exposed for screenshots/tests: animation phase. */
+const setPhase = (p: string) => { if (W.__gacha) W.__gacha.phase = p }
+const $ = <T extends Element = SVGGElement>(sel: string) => svg.querySelector(sel) as T
+const win = () => document.querySelector('.win')!
 
-function paintCase(lift: number, latch: number) {
-  ISO.setSfx(`${sfx}g`)
-  const C = GACHA.MINI_C
-  const L: any = CASE.layout(C, 1, false)
-  L.lid.z += lift
-  L.latch = latch
-  const cc = ['r', 'b', 'o', 'g', 'p', 't', 'w', 'r', 'g']
-  L.caps = { 1: cc.map((top, i) => ({ top, tag: '', rot: -20 + i * 9 })), 2: cc.slice().reverse().map((top, i) => ({ top, tag: '', rot: 10 - i * 7 })) }
-  L.show = { 1: cc.map(() => true), 2: cc.map(() => true) }
-  const g = svg.querySelector('[data-p="case9"]')
-  if (g) g.innerHTML = CASE.svg(C, L, {})
-}
-function setT(v: number) {
-  T = v
-  for (const p of GACHA.PARTS) {
-    const e = easeIO(clamp01((v - p.a) / 0.45))
-    const q = P3(p.v[0] * e * 1.25, p.v[1] * e * 1.25, p.v[2] * e * 1.25)
-    svg.querySelector(`[data-p="${p.id}"]`)?.setAttribute('transform', `translate(${ISO.f(q[0])},${ISO.f(q[1])})`)
-  }
-  const A = GACHA_VB.A
-  const E = GACHA_VB.E
-  const k = easeIO(clamp01(v))
-  svg.setAttribute('viewBox', A.map((a: number, i: number) => ISO.f(a + (E[i] - a) * k)).join(' '))
-  W.__gacha = { ...(W.__gacha || {}), T }
-}
-async function explodeIntro() {
-  busy = true
-  setPhase('assembled')
-  setT(0)
-  if (RM()) { setPhase(''); busy = false; return }
-  await sleep(380)
-  setPhase('explode')
-  await tween(950, e => setT(e), easeIO)
-  setPhase('hold')
-  await sleep(1000)
-  setPhase('re')
-  await tween(1500, e => setT(1 - e), easeIO)
-  setT(0)
-  anim(svg, [{ transform: 'translateY(0)' }, { transform: 'translateY(1.5px)' }, { transform: 'translateY(0)' }], { duration: 260, easing: 'ease-out' })
-  setPhase('')
-  busy = false
-}
 /** World point → client coordinates. */
 function scr(x: number, y: number, z: number) {
-  const q = P3(x, y, z)
+  const q = INK.P(x, y, z)
   const m = svg.getScreenCTM()!
-  return { x: m.a * q[0] + m.c * q[1] + m.e, y: m.b * q[0] + m.d * q[1] + m.f }
+  return { x: m.a * q[0] + m.c * q[1] + m.e, y: m.b * q[0] + m.d * q[1] + m.f, s: m.a }
 }
-/** Home mini machine → this machine: shared element (FLIP), the rest of the page fades in after. */
+function flycap(R: number, c = cap, lw = 1.3) {
+  const d = document.createElement('div')
+  d.className = 'flycap big'
+  d.style.cssText = `width:${R * 2}px;height:${R * 2}px`
+  d.innerHTML = `<svg class="ink" viewBox="${-R} ${-R} ${2 * R} ${2 * R}" style="overflow:visible">${INK.capsule(R, c.c, { th: c.th, m: c.m, lw })}</svg>`
+  win().appendChild(d)
+  return d
+}
+const arc = (p0: { x: number, y: number }, p1: { x: number, y: number }, lift: number, n: number, f: (t: number) => string, op?: (t: number) => number) => {
+  const kf: Keyframe[] = []
+  for (let i = 0; i <= n; i++) {
+    const tt = i / n
+    const u = 1 - tt
+    const cx = (p0.x + p1.x) / 2
+    const cy = Math.min(p0.y, p1.y) - lift
+    const k: Keyframe = { transform: `translate(${u * u * p0.x + 2 * u * tt * cx + tt * tt * p1.x}px,${u * u * p0.y + 2 * u * tt * cy + tt * tt * p1.y}px) ${f(tt)}` }
+    if (op) k.opacity = op(tt)
+    kf.push(k)
+  }
+  return kf
+}
+const fades = () => {
+  const host = root.value!
+  const rest = [...(host.parentElement?.children || [])].filter(c => c !== host && !c.classList.contains('pop')) as HTMLElement[]
+  const inner = [...host.children].filter(c => !c.classList.contains('gstage') && !c.classList.contains('gcard')) as HTMLElement[]
+  return [...rest, ...inner]
+}
+
+// ---- shared elements
+/** Home mini machine → this machine (FLIP); the rest of the page fades in; the small chest drops in after. */
 async function flipIn(f: NonNullable<typeof gachaFx.flip>) {
   busy = true
   setPhase('flip')
@@ -92,54 +81,134 @@ async function flipIn(f: NonNullable<typeof gachaFx.flip>) {
   const ov = document.createElement('div')
   ov.className = 'flipov'
   ov.innerHTML = f.html
-  document.querySelector('.win')!.appendChild(ov)
+  win().appendChild(ov)
   ov.style.cssText = `left:${f.x}px;top:${f.y}px;width:${f.w}px;height:${f.h}px`
   const m1 = f.m
   const k = mb.a / m1.a
   const dx = mb.e - f.x - k * (m1.e - f.x)
   const dy = mb.f - f.y - k * (m1.f - f.y)
   svg.style.opacity = '0'
-  const caseG = svg.querySelector('[data-p="case9"]') as SVGGElement
-  caseG.style.opacity = '0'
-  const host = root.value!
-  const rest = [...(host.parentElement?.children || [])].filter(c => c !== host && !c.classList.contains('pop')) as HTMLElement[]
-  const inner = [...host.children].filter(c => !c.classList.contains('gstage') && !c.classList.contains('gcard')) as HTMLElement[]
-  const fades = [...rest, ...inner]
-  fades.forEach(c => { c.style.opacity = '0' })
-  W.__gacha = { ...(W.__gacha || {}), flipT: 0 }
-  await tween(720, (e, tt) => {
+  const ch = $('.chestg')
+  const chs = $('.chest-sh')
+  const fs = fades()
+  fs.forEach((c) => { c.style.opacity = '0' })
+  W.__gacha.flipT = 0
+  await tween(620, (e, tt) => {
     W.__gacha.flipT = tt
-    const arc = Math.sin(tt * Math.PI) * -14
-    ov.style.transform = `translate(${dx * e}px,${dy * e + arc}px) scale(${1 + (k - 1) * e})`
-    fades.forEach((c, i) => { const d = clamp01((tt - 0.28 - i * 0.025) / 0.5); c.style.opacity = String(d); c.style.transform = d < 1 ? `translateY(${(1 - d) * 8}px)` : '' })
+    const a = Math.sin(tt * Math.PI) * -12
+    ov.style.transform = `translate(${dx * e}px,${dy * e + a}px) scale(${1 + (k - 1) * e})`
+    fs.forEach((c, i) => { const d = clamp01((tt - 0.25 - i * 0.025) / 0.45); c.style.opacity = String(d); c.style.transform = d < 1 ? `translateY(${(1 - d) * 8}px)` : '' })
   }, easeIO)
+  ch.style.opacity = '0'
+  chs.style.opacity = '0'
   svg.style.opacity = ''
   ov.remove()
-  fades.forEach((c) => { c.style.opacity = ''; c.style.transform = '' })
-  await tween(260, (e) => { caseG.style.opacity = String(e) }, easeOut)
-  caseG.style.opacity = ''
+  fs.forEach((c) => { c.style.opacity = ''; c.style.transform = '' })
+  anim(ch, [{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.3,1.2)' }).finished.then(() => { ch.style.opacity = '' })
+  anim(chs, [{ opacity: 0 }, { opacity: 1 }], { duration: 240 }).finished.then(() => { chs.style.opacity = '' })
   W.__gacha.flipT = 1
   setPhase('')
   busy = false
 }
-
-// ---- crank + gears
-function setCrank(a: number) {
-  ang.value = a
-  svg.querySelector('.crot')?.setAttribute('transform', `rotate(${ISO.f(a)})`)
-  svg.querySelector('.gA')?.setAttribute('transform', `translate(30,22) rotate(${ISO.f(a)})`)
-  svg.querySelector('.gB')?.setAttribute('transform', `translate(50.6,31.6) rotate(${ISO.f(-a * 14 / 9.2 + 8)})`)
-  svg.querySelector('.gC')?.setAttribute('transform', `translate(13,34) rotate(${ISO.f(-a * 14 / 7)})`)
-  const pd = svg.querySelector('.paddle')
-  if (pd) { ISO.setSfx(`${sfx}g`); pd.innerHTML = GACHA.paddle(-a * Math.PI / 180 * 1.5) }
+/** 收藏 → here: the big chest shrinks into the small chest (lid closing on the way) while the small machine beside it
+ *  grows into this machine — one 420 ms tween; shadows fade in late. */
+async function chestIn(src: DOMRect, msrc: DOMRect | null) {
+  busy = true
+  setPhase('chestIn')
+  const g = $('.chestg')
+  const body = g.querySelector('.cbody') as SVGGElement
+  const C = CHEST.SMALL
+  const b = body.getBBox()
+  const m = svg.getScreenCTM()!
+  const sx = (src.left - m.e) / m.a
+  const sy = (src.top - m.f) / m.d
+  const s0 = (src.width / m.a) / b.width
+  const tx0 = sx - s0 * b.x
+  const ty0 = sy - s0 * b.y
+  const mach = $('.mach')
+  fades().forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 120 + i * 20, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' }))
+  const csh = $('.chest-sh')
+  const msh = $('.m-sh')
+  csh.style.opacity = '0'
+  anim(csh, [{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 420 }).finished.then(() => { csh.style.opacity = '' })
+  let mT: ((e: number) => void) | null = null
+  if (msrc) {
+    const mb = mach.getBBox()
+    const ms0 = (msrc.width / m.a) / mb.width
+    const mx0 = (msrc.left - m.e) / m.a - ms0 * mb.x
+    const my0 = (msrc.top - m.f) / m.d - ms0 * mb.y
+    mT = (e) => { const sc = ms0 + (1 - ms0) * e; mach.setAttribute('transform', `translate(${INK.f(mx0 * (1 - e))},${INK.f(my0 * (1 - e))}) scale(${INK.f(sc)})`) }
+    mT(0)
+    msh.style.opacity = '0'
+    anim(msh, [{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }], { duration: 420 }).finished.then(() => { msh.style.opacity = '' })
+  }
+  else { anim(mach, [{ opacity: 0, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 80, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }) }
+  const lid = g.querySelector('.clid') as SVGGElement
+  const glow = g.querySelector('.c-glow') as SVGElement | null
+  await tween(420, (e, tt) => {
+    const sc = s0 + (1 - s0) * e
+    g.setAttribute('transform', `translate(${INK.f(tx0 * (1 - e))},${INK.f(ty0 * (1 - e))}) scale(${INK.f(sc)})`)
+    lid.innerHTML = CHEST.lid(C, 104 * (1 - easeOut(clamp01(tt * 1.15))))
+    if (glow) glow.style.opacity = String(1 - tt)
+    mT?.(e)
+  }, tt => 1 - (1 - tt) ** 3)
+  g.removeAttribute('transform')
+  mach.removeAttribute('transform')
+  lid.innerHTML = CHEST.lid(C, 0)
+  anim(g, [{ transform: 'translateY(0)' }, { transform: 'translateY(.8px)' }, { transform: 'none' }], { duration: 200, easing: 'ease-out' })
+  setPhase('')
+  busy = false
 }
-function bindCrank() {
-  const el = svg.querySelector('[data-p="crank"]') as SVGGElement
+function handoff(to: string) {
+  if (to !== 'fav' || !svg) return
+  chestFx.from = $('.chestg .cbody').getBoundingClientRect()
+  machFx.from = $('.mach').getBoundingClientRect()
+}
+/** Leaving (non-blocking): to 收藏 the chest and machine travel as shared elements, so hide them here and slide the rest out. */
+function exit(layer: HTMLElement, to: string) {
+  big?.remove()
+  big = null
+  if (to === 'fav') layer.querySelectorAll<SVGElement>('.chestg,.mach,.m-sh,.chest-sh').forEach((e) => { e.style.opacity = '0' })
+  const host = layer.querySelector('.anat')
+  ;[...layer.children].filter(c => c !== host && !c.classList.contains('pop')).concat([...(host?.querySelectorAll(':scope>*:not(.gstage)') || [])])
+    .forEach(c => anim(c as HTMLElement, [{ opacity: 1 }, { opacity: 0 }], { duration: 130, fill: 'forwards' }))
+  return anim(layer, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: to === 'fav' ? 'translateX(-36px)' : 'translateY(-4px)' }], { duration: to === 'fav' ? 300 : 180, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' }).finished
+}
+
+// ---- knob · shake
+function setKnob(a: number) {
+  ang.value = a
+  $('.knobg').innerHTML = GM.knob(a)
+}
+function jiggle(k: number) {
+  const now = performance.now()
+  svg.querySelectorAll('.pcj').forEach((c, i) => {
+    const a = k ? (INK.hsh(i, now % 997) - 0.5) * 2.2 * k : 0
+    const b = k ? (INK.hsh(now % 991, i) - 0.5) * 1.6 * k : 0
+    if (k) c.setAttribute('transform', `translate(${INK.f(a)},${INK.f(b)})`)
+    else c.removeAttribute('transform')
+  })
+}
+/** Machine shake: transform only (body group + capsules); the ground shadow stays put. */
+function shake(dur: number, amp = 1) {
+  const shk = $('.shk')
+  return tween(dur, (_e, tt) => {
+    const env = Math.sin(Math.PI * tt) * amp
+    const x = Math.sin(tt * Math.PI * 14) * 0.9 * env
+    const y = Math.cos(tt * Math.PI * 18) * 0.35 * env
+    const r = Math.sin(tt * Math.PI * 11) * 0.7 * env
+    shk.setAttribute('transform', `translate(${INK.f(x)},${INK.f(y)}) rotate(${INK.f(r)} 0 40)`)
+    jiggle(env * 1.4)
+  }, q => q).then(() => { shk.removeAttribute('transform'); jiggle(0) })
+}
+function bindKnob() {
+  const el = $('.knobg')
   let drag = false
   let last = 0
   let acc = 0
   let moved = false
-  const angOf = (e: PointerEvent) => { const b = svg.querySelector('.crot .hub')!.getBoundingClientRect(); return Math.atan2(e.clientY - (b.top + b.height / 2), e.clientX - (b.left + b.width / 2)) * 180 / Math.PI }
+  const ctr = () => scr(GM.W + 2, GM.DP - GM.DIAL.u, GM.BH - GM.DIAL.v)
+  const angOf = (e: PointerEvent) => { const c = ctr(); return Math.atan2(e.clientY - c.y, e.clientX - c.x) * 180 / Math.PI }
   el.addEventListener('pointerdown', (e) => { if (busy || phase.value !== 'idle' || !D.list.length) return; drag = true; moved = false; last = angOf(e); acc = 0; el.setPointerCapture(e.pointerId) })
   el.addEventListener('pointermove', (e) => {
     if (!drag) return
@@ -148,51 +217,59 @@ function bindCrank() {
     if (d > 180) d -= 360
     if (d < -180) d += 360
     last = a
-    if (d > 0) { acc += d; moved = true; setCrank(ang.value + d) }
-    if (acc >= 360) { drag = false; dispense() }
+    if (d > 0) { acc += d; moved = true; setKnob(ang.value + d); jiggle(Math.min(1, d / 12)) }
+    if (acc >= 360) { drag = false; busy = true; shake(380).then(() => { busy = false; dispense() }) }
   })
-  el.addEventListener('pointerup', () => { if (!drag) return; drag = false; if (!moved || acc < 15) turn() })
+  el.addEventListener('pointerup', () => { if (!drag) return; drag = false; jiggle(0); if (!moved || acc < 12) turn() })
 }
 async function turn() {
   if (busy || phase.value !== 'idle' || !D.list.length) return
   busy = true
+  phase.value = 'busy'
+  setPhase('turn')
   const a0 = ang.value
-  svg.querySelector('.pile')?.classList.add('shake')
-  await tween(1050, e => setCrank(a0 + 360 * e), easeIO)
+  shake(900, 1)
+  await tween(900, (e, tt) => {
+    if (tt > 0.28 && tt < 0.8) setPhase('shake')
+    setKnob(a0 + 360 * e + Math.sin(tt * Math.PI * 8) * 2 * (1 - tt))
+  }, easeIO)
+  setKnob(a0 + 360)
   busy = false
-  dispense()
+  await dispense()
 }
 
+// ---- dispense → open
 async function dispense() {
   if (busy) return
   const id = D.list[0]
-  if (!id) return
+  if (!id) { phase.value = 'idle'; return }
   busy = true
   phase.value = 'busy'
-  svg.querySelector('.pile')?.classList.remove('shake')
+  setPhase('drop')
   const it = item(id)
   const g = gachaToday()
   g.n++
-  // hide one capsule from the top of the pile; its colour is the capsule that comes out
-  const hidden = PILE_PICK[g.n % PILE_PICK.length]
-  hiddenPc = svg.querySelector(`.pc[data-i="${hidden}"]`)
-  if (hiddenPc) hiddenPc.style.opacity = '0'
-  const pt = GACHA.PILE[hidden]?.top
-  capc = { top: pt && pt !== 'w' ? pt : ['r', 'b', 'g', 'o', 'p', 't'][g.n % 6], tag: '' }
-  // drop from the exit opening into the tray
-  const drop = svg.querySelector('.drop') as SVGGElement
-  const a = P3(31, 103, 32)
-  const b = P3(31, 106, 24.6)
-  drop.innerHTML = `<g class="dc">${ISO.capsule(6.2, capc.top, capc.tag)}</g>`
+  // one capsule leaves the top of the pile; its colours are the capsule that comes out
+  const hi = GM.PICK[(g.n * 7) % GM.PICK.length]
+  hiddenPc = svg.querySelector(`.pc[data-i="${hi}"]`)
+  if (hiddenPc) anim(hiddenPc, [{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' })
+  const pc = GM.PILE[hi]
+  cap = { c: pc.c, th: pc.th, m: pc.m }
+  const flapG = $('.flapg')
+  const drop = $('.drop')
+  drop.innerHTML = `<g class="dc">${INK.capsule(GM.CR * 1.2247, cap.c, { th: cap.th, m: cap.m, lw: 0.42 })}</g>`
   const dc = drop.firstChild as SVGGElement
-  drop.setAttribute('transform', svg.querySelector('[data-p="exit"]')?.getAttribute('transform') || '')
-  await tween(460, (_e, tt) => {
-    const bt = tt < 0.62 ? (tt / 0.62) ** 2 : 1 - Math.sin((tt - 0.62) / 0.38 * Math.PI) * 0.12
-    const y = a[1] + (b[1] - a[1]) * bt
-    const x = a[0] + (b[0] - a[0]) * Math.min(1, tt * 1.4)
-    dc.setAttribute('transform', `translate(${ISO.f(x)},${ISO.f(y)}) rotate(${ISO.f(tt * 140)})`)
-  }, q => q)
-  await sleep(160)
+  const yC = GM.DP - (GM.EXIT.u0 + GM.EXIT.u1) / 2
+  tween(150, (e) => { flapG.innerHTML = GM.flap(62 * e) }, easeOut)
+  await tween(400, (e, tt) => {
+    const x = 36 + (44.6 - 36) * e
+    const z = 11.5 + (2.2 + GM.CR - 11.5) * Math.min(1, tt * 1.25) ** 2 + (tt > 0.8 ? Math.sin((tt - 0.8) / 0.2 * Math.PI) * 0.9 : 0)
+    const q = INK.P(x, yC, z)
+    dc.setAttribute('transform', `translate(${INK.f(q[0])},${INK.f(q[1])}) rotate(${INK.f(tt * 220)})`)
+  }, tt => 1 - (1 - tt) ** 2)
+  tween(220, (e) => { flapG.innerHTML = GM.flap(62 * (1 - e)) }, easeOutBack)
+  setPhase('out')
+  await sleep(140)
   // the card (hidden until the capsule opens)
   cur.value = it
   curIcons.value = it.k === 'set' ? (await pickIcons(it.v)).slice(0, 10) : []
@@ -200,82 +277,68 @@ async function dispense() {
   const r = dc.getBoundingClientRect()
   const R0 = r.width / 2
   const cr = card.value!.getBoundingClientRect()
-  const R = 24
-  big = document.createElement('div')
-  big.className = 'flycap big'
-  big.style.cssText = `width:${R * 2}px;height:${R * 2}px`
-  big.innerHTML = `<svg class="iso10" viewBox="${-R} ${-R} ${2 * R} ${2 * R}" style="overflow:visible">${ISO.capsule(R, capc.top, capc.tag)}</svg>`
-  document.querySelector('.win')!.appendChild(big)
+  big = flycap(BR)
   drop.innerHTML = ''
-  const sx = r.left + R0 - R
-  const sy = r.top + R0 - R
-  const ex = cr.left + cr.width / 2 - R
-  const ey = cr.top - 30 - R
-  const kf: Keyframe[] = []
-  for (let n = 0; n <= 16; n++) {
-    const tt = n / 16
-    const u = 1 - tt
-    const cx = (sx + ex) / 2
-    const cy = Math.min(sy, ey) - 90
-    kf.push({ transform: `translate(${u * u * sx + 2 * u * tt * cx + tt * tt * ex}px,${u * u * sy + 2 * u * tt * cy + tt * tt * ey}px) scale(${R0 / R + (1 - R0 / R) * tt}) rotate(${tt * 360}deg)` })
-  }
-  await anim(big, kf, { duration: 620, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
-  bigPos = { x: ex, y: ey }
+  const p0 = { x: r.left + R0 - BR, y: r.top + R0 - BR }
+  const p1 = { x: cr.left + cr.width / 2 - BR, y: cr.top - 30 - BR }
+  setPhase('fly')
+  await anim(big, arc(p0, p1, 80, 16, tt => `scale(${R0 / BR + (1 - R0 / BR) * tt}) rotate(${tt * 300}deg)`), { duration: 560, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
+  bigPos = p1
+  setPhase('open')
   await openCap()
   phase.value = 'reveal'
+  setPhase('reveal')
   busy = false
 }
+const capOff = () => { const a = (cap.th ?? -24) * Math.PI / 180; return [-Math.sin(a), Math.cos(a)] }
+const half = (k: number, r: number, op: number) => { const [nx, ny] = capOff(); return { transform: `translate(${nx * 24 * k}px,${ny * 24 * k}px) rotate(${r}deg)`, opacity: op } }
 async function openCap() {
   const c = card.value!
   if (big) {
-    anim(big.querySelector('.ctop')!, [{ transform: 'none' }, { transform: 'translate(-40px,6px) rotate(-30deg)' }], { duration: 440, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'forwards' })
-    anim(big.querySelector('.cbot')!, [{ transform: 'none' }, { transform: 'translate(40px,-2px) rotate(24deg)' }], { duration: 440, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'forwards' })
-    anim(big.querySelector('.cseam')!, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, fill: 'forwards' })
+    anim(big.querySelector('.ctop')!, [{ transform: 'none', opacity: 1 }, { ...half(-1, -24, 1), offset: 0.55 }, half(-1.35, -34, 0)], { duration: 440, easing: 'cubic-bezier(.25,.8,.4,1)', fill: 'forwards' })
+    anim(big.querySelector('.cbot')!, [{ transform: 'none', opacity: 1 }, { ...half(1, 22, 1), offset: 0.55 }, half(1.35, 30, 0)], { duration: 440, easing: 'cubic-bezier(.25,.8,.4,1)', fill: 'forwards' })
+    anim(big.querySelector('.cseam')!, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' })
   }
   c.style.transformOrigin = '50% -30px'
-  await anim(c, [{ transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }, { transform: 'scale(1.03)', opacity: 1, borderRadius: '16px', offset: 0.72 }, { transform: 'scale(1)', opacity: 1, borderRadius: '16px' }], { duration: 480, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }).finished
+  await anim(c, [{ transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }, { transform: 'scale(1.03)', opacity: 1, borderRadius: '16px', offset: 0.72 }, { transform: 'scale(1)', opacity: 1, borderRadius: '16px' }], { duration: 440, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }).finished
 }
 async function closeCap() {
   const c = card.value
-  if (c) await anim(c, [{ transform: 'scale(1)', opacity: 1, borderRadius: '16px' }, { transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }], { duration: 300, easing: 'ease-in', fill: 'forwards' }).finished
-  if (!big) return
-  anim(big.querySelector('.ctop')!, [{ transform: 'translate(-40px,6px) rotate(-30deg)' }, { transform: 'none' }], { duration: 280, easing: 'ease-out', fill: 'forwards' })
-  anim(big.querySelector('.cbot')!, [{ transform: 'translate(40px,-2px) rotate(24deg)' }, { transform: 'none' }], { duration: 280, easing: 'ease-out', fill: 'forwards' })
-  await anim(big.querySelector('.cseam')!, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, fill: 'forwards' }).finished
+  if (big) {
+    anim(big.querySelector('.ctop')!, [half(-1.35, -34, 0), { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+    anim(big.querySelector('.cbot')!, [half(1.35, 30, 0), { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+  }
+  if (c) await anim(c, [{ transform: 'scale(1)', opacity: 1, borderRadius: '16px' }, { transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }], { duration: 240, easing: 'ease-in', fill: 'forwards' }).finished
+  if (big) await anim(big.querySelector('.cseam')!, [{ opacity: 0 }, { opacity: 1 }], { duration: 80, fill: 'forwards' }).finished
 }
-function restorePile() { if (hiddenPc) hiddenPc.style.opacity = ''; hiddenPc = null }
+function restorePile() { if (hiddenPc) { hiddenPc.getAnimations().forEach(a => a.cancel()); hiddenPc.style.opacity = '' } hiddenPc = null }
 
+/** Keep: the capsule hops into the small chest beside the machine (lid pops → in → closes with a bounce). */
 async function keep() {
   if (phase.value !== 'reveal' || busy || !cur.value) return
   busy = true
   phase.value = 'busy'
   const it = cur.value
   await closeCap()
-  const R = 24
-  const r = 9
-  const sc = r / R
-  const t0 = scr(31, 121, 0)
-  const c0 = scr(122, 112, 0)
-  const lidTop = scr(148, 56, 26)
-  const p0 = bigPos
-  const p1 = { x: t0.x - R, y: t0.y - R - r }
-  const p2 = { x: c0.x - R, y: c0.y - R - r }
-  setPhase('drop')
+  const C = CHEST.SMALL
+  const lid = $('.chestg .clid')
+  const glow = $<SVGElement>('.chestg .c-glow')
+  const mq = CHEST.mouthXY(C)
+  const m = svg.getScreenCTM()!
+  const mx = m.a * mq[0] + m.e
+  const my = m.d * mq[1] + m.f
+  const sc = (GM.CR * 1.2247 * m.a) / BR
+  setPhase('hop')
+  tween(200, (e) => { lid.innerHTML = CHEST.lid(C, 96 * e); if (glow) glow.style.opacity = String(e) }, easeOut)
   if (big) {
-    await anim(big, [{ transform: `translate(${p0.x}px,${p0.y}px) scale(1)` }, { transform: `translate(${p1.x}px,${p1.y}px) scale(${sc}) rotate(200deg)` }], { duration: 460, easing: 'cubic-bezier(.5,0,.6,1)', fill: 'forwards' }).finished
-    setPhase('roll')
-    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-    const rot = 200 + dist / r * 57.3
-    await anim(big, [{ transform: `translate(${p1.x}px,${p1.y}px) scale(${sc}) rotate(200deg)` }, { transform: `translate(${(p1.x + p2.x) / 2}px,${(p1.y + p2.y) / 2 - 3}px) scale(${sc}) rotate(${(200 + rot) / 2}deg)` }, { transform: `translate(${p2.x}px,${p2.y}px) scale(${sc}) rotate(${rot}deg)` }], { duration: 760, easing: 'cubic-bezier(.3,.1,.4,1)', fill: 'forwards' }).finished
-    setPhase('hop')
-    tween(260, e => paintCase(e * 10, e), easeOut)
-    await sleep(120)
-    const p3 = { x: lidTop.x - R, y: lidTop.y - R }
-    await anim(big, [{ transform: `translate(${p2.x}px,${p2.y}px) scale(${sc}) rotate(${rot}deg)` }, { transform: `translate(${(p2.x + p3.x) / 2}px,${Math.min(p2.y, p3.y) - 34}px) scale(${sc}) rotate(${rot + 120}deg)` }, { transform: `translate(${p3.x}px,${p3.y + 8}px) scale(${sc * 0.8}) rotate(${rot + 200}deg)`, opacity: 0.2 }], { duration: 440, easing: 'cubic-bezier(.4,0,.5,1)', fill: 'forwards' }).finished
+    await anim(big, arc(bigPos, { x: mx - BR, y: my - BR - 4 }, 70, 14, tt => `scale(${1 + (sc - 1) * tt}) rotate(${tt * -280}deg)`, tt => (tt > 0.92 ? 0 : 1)), { duration: 520, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' }).finished
     big.remove()
     big = null
-    await tween(300, e => paintCase(10 - e * 10, 1 - e), easeOutBack)
   }
+  await tween(260, (e) => { lid.innerHTML = CHEST.lid(C, 96 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOutBack)
+  lid.innerHTML = CHEST.lid(C, 0)
+  if (glow) glow.style.opacity = ''
+  anim($('.chestg'), [{ transform: 'translateY(0)' }, { transform: 'translateY(.8px)' }, { transform: 'none' }], { duration: 200, easing: 'ease-out' })
   decide(it.id, 'like')
   S.gacha.kept++
   bumpChest()
@@ -287,34 +350,22 @@ async function keep() {
   phase.value = 'idle'
   busy = false
 }
-
+/** Put back: the capsule flies back to the top of the globe, the machine shakes once. */
 async function back() {
   if (phase.value !== 'reveal' || busy || !cur.value) return
   busy = true
   phase.value = 'busy'
   const it = cur.value
   await closeCap()
-  const R = 24
-  const top = scr(50, 50, 150)
-  const p0 = bigPos
-  const p1 = { x: top.x - R, y: top.y - R }
-  const sc = 6 / R
-  const lidEl = svg.querySelector('[data-p="lid"]')!
-  const kf: Keyframe[] = []
-  for (let n = 0; n <= 16; n++) {
-    const tt = n / 16
-    const u = 1 - tt
-    const cx = (p0.x + p1.x) / 2
-    const cy = Math.min(p0.y, p1.y) - 80
-    kf.push({ transform: `translate(${u * u * p0.x + 2 * u * tt * cx + tt * tt * p1.x}px,${u * u * p0.y + 2 * u * tt * cy + tt * tt * p1.y}px) scale(${1 + (sc - 1) * tt}) rotate(${-tt * 300}deg)`, opacity: tt > 0.9 ? 0 : 1 })
+  const top = scr(GM.CX, GM.CY, GM.CAPZ + 8)
+  const sc = (GM.CR * 1.2247 * top.s) / BR
+  if (big) {
+    await anim(big, arc(bigPos, { x: top.x - BR, y: top.y - BR }, 70, 16, tt => `scale(${1 + (sc - 1) * tt}) rotate(${-tt * 300}deg)`, tt => (tt > 0.9 ? 0 : 1)), { duration: 560, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
+    big.remove()
+    big = null
   }
-  tween(700, (_e, tt) => { const q = P3(0, 0, Math.sin(tt * Math.PI) * 16); lidEl.setAttribute('transform', `translate(${ISO.f(q[0])},${ISO.f(q[1])})`) }, q => q)
-  if (big) { await anim(big, kf, { duration: 660, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished; big.remove(); big = null }
   restorePile()
-  const pile = svg.querySelector('.pile')
-  pile?.classList.add('shake')
-  await sleep(420)
-  pile?.classList.remove('shake')
+  await shake(320, 0.6)
   putBack(it.id)
   cur.value = null
   toast(t('putBackMsg'), 'lucide:undo-2')
@@ -328,36 +379,37 @@ const dotOf = (it: Item) => it.k === 'set' ? '' : UICOL[it.v.split('/')[0]] || '
 
 onMounted(() => {
   svg = svgEl.value!
-  ISO.setSfx(`${sfx}g`)
-  svg.innerHTML = gachaScene(`${sfx}g`, { withCase: true })
-  paintCase(0, 0)
-  setT(0)
-  bindCrank()
+  svg.innerHTML = GM.scene({ chest: true })
+  bindKnob()
   swipeApi.space = turn
   swipeApi.keep = keep
   swipeApi.back = back
+  pageFx.exit.swipe = exit
+  pageFx.handoff.swipe = handoff
+  W.__gacha = { phase: '', flipT: 0, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
   if (!D.list.length) buildDeck()
   const flip = gachaFx.flip
   gachaFx.flip = null
-  const first = !gachaFx.exploded
-  gachaFx.exploded = true
-  ;(async () => {
-    if (flip && !reduced()) await flipIn(flip)
-    if (first) await explodeIntro()
-  })()
+  const src = chestFx.from
+  const msrc = machFx.from
+  chestFx.from = null
+  machFx.from = null
+  if (flip && !reduced()) flipIn(flip)
+  else if (src && !reduced()) chestIn(src, msrc)
 })
 onBeforeUnmount(() => {
   swipeApi.space = () => {}
   swipeApi.keep = () => {}
   swipeApi.back = () => {}
-  big?.remove()
+  if (pageFx.exit.swipe === exit) pageFx.exit.swipe = null
+  if (pageFx.handoff.swipe === handoff) pageFx.handoff.swipe = null
   document.querySelectorAll('.flipov').forEach(e => e.remove())
 })
 </script>
 
 <template>
-  <div ref="root" class="anat g101">
-    <div class="gstage"><svg ref="svgEl" class="isosvg iso10 gsvg" preserveAspectRatio="xMidYMid meet" /></div>
+  <div ref="root" class="anat g101 g11">
+    <div class="gstage"><svg ref="svgEl" class="ink gsvg" :viewBox="GM.VB.big.join(' ')" preserveAspectRatio="xMidYMid meet" /></div>
     <div class="rdout">
       <span>{{ t('stock') }} <b>{{ stats.stock }}</b> {{ t('mei') }}</span>
       <span>{{ t('gToday') }} <b>{{ stats.today }}</b></span>
