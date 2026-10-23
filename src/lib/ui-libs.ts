@@ -36,6 +36,8 @@ export const UIL: UILib[] = [
  {id:'primevue',name:'PrimeVue',fw:'Vue',eco:null,url:'https://primevue.org',install:'npm i primevue',zh:'组件数量多，主题丰富',en:'Huge component set, many themes'},
  {id:'antdv',name:'Ant Design Vue',fw:'Vue',eco:null,url:'https://antdv.com',install:'npm i ant-design-vue',zh:'Ant Design 的 Vue 实现',en:'Ant Design for Vue'},
 ];
+/** Brand colour per library (capsule halves, card dots). */
+export const UICOL: Record<string, string> = { shadcn: '#18181b', animate: '#ec4899', magic: '#a855f7', aceternity: '#06b6d4', origin: '#f97316', mantine: '#339af0', heroui: '#006fee', antd: '#1677ff', mui: '#007fff', radix: '#6e56cf', shadcnvue: '#41b883', inspira: '#f59e0b', element: '#409eff', naive: '#18a058', nuxtui: '#00dc82', vuetify: '#1867c0', primevue: '#10b981', antdv: '#1677ff' }
 export const UI = (id: string) => UIL.find(l => l.id === id)!
 export const DEMOS = UIL.filter(l => l.demo)
 /** Card screenshots for the libraries with a live demo (public/snap/*.jpg). */

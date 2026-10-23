@@ -12,10 +12,9 @@ import { openLib, openSet, setGlyph, toast, uiGlyph } from '../lib/actions'
 import { type SwipeAct, swipeApi } from '../lib/swipe'
 import { D, buildDeck, canUndo, decide, fading, histOf, icons, item, restart, shuffleIcons, undo } from '../lib/deck'
 import { burst, flyToChest, openPop, reduced } from '../lib/fx'
-import { tween } from '../lib/iso'
+import { GLYPH_GACHA, tween } from '../lib/iso'
 
 const ready = ref(false)
-const N = (n?: number) => Number(n || 0).toLocaleString()
 const cats = computed(() => [...new Set(Object.values(INFO).map(s => s.category).filter((c): c is string => !!c && c !== 'Archive / Unmaintained'))])
 const nFilters = computed(() => (S.swf.color !== 'any' ? 1 : 0) + (S.swf.cat ? 1 : 0) + (S.swf.lic ? 1 : 0))
 const DECKS: [Deck, string, string][] = [['icons', 'dIcons', 'lucide:layout-grid'], ['comp', 'dComp', 'lucide:toggle-left'], ['lib', 'dLib', 'lucide:package'], ['chest', 'dChest', 'lucide:package-open']]
@@ -157,7 +156,7 @@ onBeforeUnmount(() => { swipeApi.commit = () => {}; swipeApi.undo = () => {}; sw
       <span class="sp" />
       <div class="vtog">
         <button :class="{ on: S.swView === 'cards' }" @click="S.swView = 'cards'"><UiIcon name="lucide:layers" />{{ t('vCards') }}</button>
-        <button :class="{ on: S.swView === 'gacha' }" @click="S.swView = 'gacha'"><UiIcon name="lucide:dices" />{{ t('vGacha') }}</button>
+        <button :class="{ on: S.swView === 'gacha' }" @click="S.swView = 'gacha'"><span class="tgi" v-html="GLYPH_GACHA" />{{ t('vGacha') }}</button>
       </div>
       <button v-if="S.deck === 'icons'" class="fchip" :class="{ on: R.pop === 'filter' }" @click.stop="openPop('filter', $event)"><UiIcon name="lucide:sliders-horizontal" />{{ t('filterN') }}<span v-if="nFilters" class="n">{{ nFilters }}</span></button>
       <button class="tbtn" :title="`${t('shuffle')} (R)`" :disabled="front?.k !== 'set'" @click="shuffle"><UiIcon name="lucide:shuffle" /></button>
@@ -182,7 +181,7 @@ onBeforeUnmount(() => { swipeApi.commit = () => {}; swipeApi.undo = () => {}; sw
           >
             <!-- icon set card -->
             <template v-if="c.k === 'set'">
-              <div class="ch"><b>{{ info(c.v).name }}</b><small>{{ info(c.v).author?.name || '' }} · {{ t('icons', { n: N(info(c.v).total) }) }}</small></div>
+              <div class="ch"><b>{{ info(c.v).name }}</b></div>
               <div class="cg">
                 <span v-for="(ic, i) in (icons[c.v] || Array(12).fill('')).slice(0, 12)" :key="i" :style="{ transition: 'opacity .18s', transitionDelay: fading[c.v] ? '0ms' : `${i * 12}ms`, opacity: fading[c.v] ? 0 : 1 }">
                   <UiIcon v-if="ic" :name="ic" />
