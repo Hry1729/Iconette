@@ -18,9 +18,9 @@ import { icons as setIcons, pickIcons } from '../lib/deck'
 import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, tween } from '../lib/iso'
 
 // 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
-// cards per page (3 × 2). Entering: 6 capsules fly out of the chest and bloom into the cards. Turning a page: the 6
-// cards fold into capsules and fly back while the next 6 fly out, both starting at once (~420 ms, transform/opacity
-// only). The small gashapon machine stands behind-left of the chest; 收藏 ↔ 扭蛋 morph chest and machine as shared
+// cards per page (3 × 2). The open chest holds a static heap of capsules (v0.4.1). Entering: 6 capsules leave the heap
+// on arcs and bloom into the cards (~680 ms each, 55 ms stagger). Turning a page: the 6 cards fold into capsules that
+// arc back into the heap (ease-in) while the next 6 fly out (ease-out), overlapping (transform/opacity only). The small gashapon machine stands behind-left of the chest; 收藏 ↔ 扭蛋 morph chest and machine as shared
 // elements. Leaving never blocks the switch: the frozen page plays the fly-back + lid close on its own layer.
 // Icons and recent copies are plain grids (with groups).
 defineEmits<{ (e: 'copy', id: string): void }>()
@@ -53,7 +53,9 @@ function delFolder(f: string) { delete S.folders[f]; if (R.folder === f) R.folde
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
 // ---- the chest
-const FLY = { out: 340, back: 320, stag: 12, ease: 'cubic-bezier(.22,.7,.3,1)' }
+// v0.4.1: slower, deliberate flights — each capsule ~680 ms on an arc, 55 ms stagger (6 cards ≈ 0.95 s);
+// ease-out leaving the chest, ease-in returning to it. A page turn overlaps both (the new page starts 140 ms in).
+const FLY = { out: 680, back: 640, stag: 55, overlap: 140 }
 const items = computed<string[]>(() => (R.favTab === 'ui' ? S.uiFav : R.favTab === 'sets' ? S.sets : []))
 const page = reactive<Record<string, number>>({ sets: 1, ui: 1 })
 const nPages = computed(() => Math.max(1, Math.ceil(items.value.length / 6)))
@@ -81,10 +83,13 @@ const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
 /** Chest mouth in client coordinates. */
-function mouth(svg = svgEl.value!) {
-  const q = CHEST.mouthXY(CHEST.BIG)
+function mouth(svg = svgEl.value!, k = 0) {
+  const q = CHEST.pileTop(CHEST.BIG)
   const m = svg.getScreenCTM()!
-  return { x: m.a * q[0] + m.e, y: m.d * (q[1] - 4) + m.f }
+  // spread the exits / landings over the heap so the capsules seem to come from (and sink into) different spots
+  const sx = [-26, 18, -6, 30, -18, 6][k % 6]
+  const sy = [4, -2, 6, 3, -3, 1][k % 6]
+  return { x: m.a * (q[0] + sx) + m.e, y: m.d * (q[1] + sy) + m.f, s: m.a }
 }
 function capEl(col: string, size = 30) {
   const d = document.createElement('div')
@@ -95,55 +100,75 @@ function capEl(col: string, size = 30) {
   document.querySelector('.win')!.appendChild(d)
   return d
 }
-/** Capsules fly out of the chest and bloom into the cards of the current grid. */
+/** Point on a quadratic arc from (dx,dy) to (0,0), apex lifted `lift` px above the higher end. */
+function arcAt(dx: number, dy: number, lift: number, tt: number) {
+  const cx = dx * 0.5
+  const cy = Math.min(dy, 0) - lift
+  const u = 1 - tt
+  return { x: u * u * dx + 2 * u * tt * cx, y: u * u * dy + 2 * u * tt * cy }
+}
+const tr = (p: { x: number, y: number }) => `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`
+/** Capsules leave the heap in the chest one by one, arc over to their card spots and bloom into the cards. */
 function flyOut(delay = 0) {
   const g = grid.value
   if (!g || !svgEl.value) return Promise.resolve()
   const cards = [...g.querySelectorAll<HTMLElement>('.fc')]
-  const M = mouth()
   const S0 = 30
   const jobs: Promise<unknown>[] = []
+  const T = FLY.out
+  const ARR = 0.7 // the capsule reaches the card at 70 %, then blooms
   cards.forEach((c, k) => {
     const r = c.getBoundingClientRect()
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
     const d0 = delay + k * FLY.stag
-    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: d0 + 160, fill: 'backwards' }).finished); return }
+    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + T * 0.55, fill: 'backwards' }).finished); return }
+    const M = mouth(undefined, k)
+    const s0 = Math.max(0.3, (M.s * 6.4 * 2) / S0) // starts at the size of a capsule in the heap
     const cp = capEl(c.dataset.c || '', S0)
-    const dx = M.x - cx
-    const dy = M.y - cy
-    const ax = dx * 0.45
-    const ay = dy * 0.45 - 46 - (k % 3) * 6
     cp.style.left = `${cx - S0 / 2}px`
     cp.style.top = `${cy - S0 / 2}px`
-    anim(cp, [{ transform: `translate(${dx}px,${dy}px) scale(.42) rotate(-200deg)`, opacity: 0 }, { opacity: 1, offset: 0.08 }, { transform: `translate(${ax}px,${ay}px) scale(.85) rotate(-70deg)`, offset: 0.34 }, { transform: 'translate(0,0) scale(1.08) rotate(0)', opacity: 1, offset: 0.6 }, { transform: 'scale(1.4)', opacity: 0, offset: 0.78 }, { transform: 'scale(1.4)', opacity: 0 }], { duration: FLY.out, delay: d0, easing: FLY.ease, fill: 'both' }).finished.then(() => cp.remove(), () => cp.remove())
-    jobs.push(anim(c, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(.3)', offset: 0.46 }, { opacity: 1, transform: 'scale(1.025)', offset: 0.78 }, { opacity: 1, transform: 'none' }], { duration: FLY.out, delay: d0, easing: FLY.ease, fill: 'backwards' }).finished)
+    const lift = 60 + (k % 3) * 14
+    const N = 14
+    const kf: Keyframe[] = []
+    for (let i = 0; i <= N; i++) {
+      const tt = 1 - (1 - i / N) ** 2.2 // ease-out baked into the path, so the bloom keeps linear time
+      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, tt))} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(-220 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, offset: ARR * (i / N) })
+    }
+    kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, offset: 1 })
+    cp.style.opacity = '0'
+    anim(cp, kf, { duration: T, delay: d0, easing: 'linear', fill: 'forwards' }).finished.then(() => cp.remove(), () => cp.remove())
+    jobs.push(anim(c, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(.3)', offset: ARR - 0.04, easing: 'cubic-bezier(.2,.8,.3,1)' }, { opacity: 1, transform: 'scale(1.02)', offset: 0.92, easing: 'ease-out' }, { opacity: 1, transform: 'none' }], { duration: T, delay: d0, easing: 'linear', fill: 'backwards' }).finished)
   })
   pulse(delay)
   return Promise.all(jobs).catch(() => {})
 }
-/** Cards (in `layer`, a frozen copy) fold into capsules and fly back into the chest. */
+/** Cards (in `layer`, a frozen copy) fold into capsules that arc back and sink into the heap. */
 function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back) {
   const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
-  const M = mouth(svg)
   const S0 = 30
   const jobs: Promise<unknown>[] = []
+  const FOLD = 0.24 // the card folds into its capsule during the first 24 %
   cards.forEach((c, k) => {
     const r = c.getBoundingClientRect()
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
     const d0 = k * FLY.stag
-    const pull = `translate(${(M.x - cx) * 0.16}px,${(M.y - cy) * 0.16}px) scale(.32)`
-    jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: pull, offset: 0.32 }, { opacity: 0, transform: pull }], { duration: dur, delay: d0, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' }).finished)
+    jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.3)', offset: FOLD }, { opacity: 0, transform: 'scale(.3)' }], { duration: dur, delay: d0, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' }).finished)
     if (c.classList.contains('empty')) return
+    const M = mouth(svg, 5 - k)
+    const s1 = Math.max(0.3, (M.s * 6.4 * 2) / S0)
     const cp = capEl(c.dataset.c || '', S0)
-    const dx = M.x - cx
-    const dy = M.y - cy
-    const ax = dx * 0.55
-    const ay = dy * 0.55 - 40 - (k % 3) * 5
     cp.style.left = `${cx - S0 / 2}px`
     cp.style.top = `${cy - S0 / 2}px`
-    const a = anim(cp, [{ transform: 'scale(.5)', opacity: 0 }, { transform: 'scale(1)', opacity: 1, offset: 0.24 }, { transform: `translate(${ax}px,${ay}px) scale(.78) rotate(90deg)`, offset: 0.6 }, { transform: `translate(${dx}px,${dy}px) scale(.42) rotate(200deg)`, opacity: 1, offset: 0.9 }, { transform: `translate(${dx}px,${dy + 6}px) scale(.3) rotate(220deg)`, opacity: 0 }], { duration: dur, delay: d0, easing: 'cubic-bezier(.45,.05,.4,1)', fill: 'both' })
+    const lift = 56 + (k % 3) * 12
+    const kf: Keyframe[] = [{ transform: 'translate(0px,0px) scale(.4)', opacity: 0, offset: 0 }, { transform: 'translate(0px,0px) scale(1.04)', opacity: 1, offset: FOLD }]
+    for (let i = 1; i <= 14; i++) {
+      const tt = (i / 14) ** 1.9 // ease-in baked into the path
+      const off = FOLD + (1 - FOLD) * (i / 14)
+      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, 1 - tt))} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === 14 ? 0 : 1, offset: off })
+    }
+    const a = anim(cp, kf, { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
     a.finished.then(() => cp.remove(), () => cp.remove())
     jobs.push(a.finished)
   })
@@ -151,12 +176,12 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back) {
 }
 /** The chest reacts (transform only). */
 function pulse(delay = 0) {
-  if (fchest.value) anim(fchest.value, [{ transform: 'none' }, { transform: 'translateY(1px) scale(1.012,.985)', offset: 0.4 }, { transform: 'none' }], { duration: 260, delay: delay + FLY.out * 0.3, easing: 'ease-out' })
+  if (fchest.value) anim(fchest.value, [{ transform: 'none' }, { transform: 'translateY(1px) scale(1.012,.985)', offset: 0.4 }, { transform: 'none' }], { duration: 260, delay: delay + 20, easing: 'ease-out' })
 }
 function wiggle() {
   const lid = svgEl.value?.querySelector('.clid')
   if (!lid || busy) return
-  tween(420, (_e, tt) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 - Math.sin(tt * Math.PI) * 18 * (1 - tt * 0.4)) }, tt => tt).then(() => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104) })
+  tween(420, (_e, tt) => { CHEST.setLid(lid, CHEST.BIG, 104 - Math.sin(tt * Math.PI) * 18 * (1 - tt * 0.4)) }, tt => tt).then(() => { CHEST.setLid(lid, CHEST.BIG, 104) })
 }
 /** Frozen copy of the current grid (the old cards fly back from it while the new grid is already rendered). */
 function ghost() {
@@ -218,11 +243,11 @@ function morphIn(src: DOMRect, msrc: DOMRect | null) {
   else anim(fmach.value!, [{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 160, fill: 'backwards' })
   const lid = svg.querySelector('.clid')!
   const glow = svg.querySelector<SVGElement>('.c-glow')
-  lid.innerHTML = CHEST.lid(CHEST.BIG, 0)
+  CHEST.setLid(lid, CHEST.BIG, 0)
   if (glow) glow.style.opacity = '0'
   anim(el, [{ transform: `translate(${tx}px,${ty}px) scale(${s})` }, { transform: 'none' }], { duration: 440, easing: 'cubic-bezier(.2,.8,.2,1)' })
-  tween(440, (_e, tt) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 * easeOut(clamp01((tt - 0.15) / 0.85))); if (glow) glow.style.opacity = String(clamp01((tt - 0.4) / 0.6)) }, tt => tt)
-    .then(() => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104); if (glow) glow.style.opacity = ''; el.style.transformOrigin = '' })
+  tween(440, (_e, tt) => { CHEST.setLid(lid, CHEST.BIG, 104 * easeOut(clamp01((tt - 0.15) / 0.85))); if (glow) glow.style.opacity = String(clamp01((tt - 0.4) / 0.6)) }, tt => tt)
+    .then(() => { CHEST.setLid(lid, CHEST.BIG, 104); if (glow) glow.style.opacity = ''; el.style.transformOrigin = '' })
   const fi = rootEl.value!.querySelector<HTMLElement>('.finfo')!
   anim(fi, [{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 120, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
   rootEl.value!.querySelectorAll<HTMLElement>('.vs, .fempty').forEach(e => anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 160, fill: 'backwards' }))
@@ -236,7 +261,7 @@ async function goPage(n: number) {
   page[R.favTab] = n
   await nextTick()
   const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
-  await Promise.all([b, flyOut(0)])
+  await Promise.all([b, flyOut(FLY.overlap)])
   busy = false
 }
 async function tab(k: FavTab) {
@@ -249,7 +274,7 @@ async function tab(k: FavTab) {
   clearSel()
   await nextTick()
   const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
-  const o = caseMode.value ? flyOut(0) : (flatIn(), Promise.resolve())
+  const o = caseMode.value ? flyOut(g ? FLY.overlap : 0) : (flatIn(), Promise.resolve())
   await Promise.all([b, o])
   busy = false
 }
@@ -273,11 +298,11 @@ function exit(layer: HTMLElement, _to: string) {
     return Promise.all(jobs)
   }
   layer.querySelectorAll<HTMLElement>('.finfo,.dbar').forEach(e => jobs.push(anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished))
-  if (cm && svg) jobs.push(flyBack(layer.querySelector('.fbody10 .fgrid10')!, svg, 260))
+  if (cm && svg) jobs.push(flyBack(layer.querySelector('.fbody10 .fgrid10')!, svg, 420))
   else layer.querySelectorAll<HTMLElement>('.vs').forEach(e => anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }))
   const lid = svg?.querySelector('.clid')
   const glow = svg?.querySelector<SVGElement>('.c-glow')
-  if (lid) jobs.push(tween(300, (e) => { lid.innerHTML = CHEST.lid(CHEST.BIG, 104 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOut))
+  if (lid) jobs.push(tween(300, (e) => { CHEST.setLid(lid, CHEST.BIG, 104 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOut))
   jobs.push(anim(layer, [{ opacity: 1 }, { opacity: 0.8, offset: 0.3 }, { opacity: 0 }], { duration: 340, fill: 'forwards' }).finished)
   return Promise.all(jobs)
 }

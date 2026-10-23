@@ -211,7 +211,7 @@ return {W,DP,BH,CX,CY,GZ,GR,CAPZ,DIAL,EXIT,CR,FR,PILE,PICK,knob,flap,scene,VB,P}
 const CHEST=(()=>{
 const {P,f,poly,line,path,D,pr}=INK;
 const BIG={x:0,y:0,z:0,w:104,d:56,h:46,lh:14,lw:1.5};
-const SMALL={x:52,y:-10,z:0,w:26,d:14,h:11.5,lh:3.5,lw:.62};
+const SMALL={x:58,y:-3,z:0,w:26,d:14,h:11.5,lh:3.5,lw:.62};
 const V=[1,1,1];
 function rot(p,y0,zh,a){const c=Math.cos(a),s=Math.sin(a),dy=p[1]-y0,dz=p[2]-zh;return [p[0],y0+dy*c-dz*s,zh+dy*s+dz*c]}
 function nrm(a,b,c){const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];return [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]}
@@ -247,9 +247,37 @@ function bodyFront(C){const {x,y,z,w,d,h}=C,zt=z+h,k=w/104;let s='';
   s+=line([[x,y+d,z+h*.16],[x+w,y+d,z+h*.16],[x+w,y,z+h*.16]],'il thin');
   return s}
 function shadow(C){const {x,y,w,d}=C,e=w*.1;return poly([[x-e*.2,y-e*.2,0],[x+w+e*.6,y-e*.2,0],[x+w+e*.6,y+d+e*1.6,0],[x-e*.2,y+d+e*1.6,0]],'m-shadow')}
-/* full chest; deg = lid angle */
-function svg(C,deg,o={}){return `<g class="chest" style="--lw:${C.lw}">${o.noShadow?'':''}<g class="cbody">${bodyBack(C,deg>20)}</g><g class="cmouth"></g><g class="cfront">${bodyFront(C)}</g><g class="clid">${lid(C,deg)}</g></g>`}
-return {BIG,SMALL,svg,lid,mouthXY,shadow,bodyBack};
+/* v0.4.1 · 箱内胶囊堆：一堆双色胶囊（确定性随机：位置 / 旋转 / 颜色），堆过箱沿，几颗探出边缘。
+   静态绘制；箱内部分被前壁遮住，箱沿以上的部分露出。按 x+y+z 由远到近排序（与扭蛋机内的堆一致）。 */
+const PILES=new Map();
+function pileOf(C){const key=C.w+':'+C.d+':'+C.h;if(PILES.has(key))return PILES.get(key);
+  const {hsh,CAPCOL}=INK;const {x,y,z,w,d,h}=C,k=w/104,t=Math.max(1.2,w*.05),zt=z+h,rc=5.2*k,H=13*k;
+  const x0=x+t+rc*.55,x1=x+w-t-rc*.55,y0=y+t+rc*.55,y1=y+d-t-rc*.55,cx=(x0+x1)/2,cy=(y0+y1)/2;
+  const top=(px,py)=>{const u=(px-cx)/((x1-x0)/2+rc*.4),v=(py-cy)/((y1-y0)/2+rc*.4),q=Math.max(0,1-u*u*.85-v*v*.7);return zt-rc*.2+H*Math.sqrt(q)};
+  const cand=[];for(let n=0;n<900;n++){const px=x0-rc*.35+hsh(n,3.1)*(x1-x0+rc*.7),py=y0-rc*.35+hsh(n,7.7)*(y1-y0+rc*.7);
+    const zt2=top(px,py);const pz=zt2-hsh(n,9.3)*rc*1.6;cand.push([px,py,pz,n])}
+  cand.sort((a,b)=>b[2]-a[2]);
+  const o=[];for(const [px,py,pz,n] of cand){if(o.some(c=>Math.hypot(c.x-px,c.y-py,c.z-pz)<rc*1.62))continue;
+    o.push({x:px,y:py,z:pz,r:rc*(.92+hsh(n,1.9)*.16),c:CAPCOL[Math.floor(hsh(px*3.3,py*5.1)*CAPCOL.length)],th:Math.floor(hsh(py,px)*360)-180,m:.22+hsh(px+1,pz)*.5})}
+  /* 几颗探出箱沿（前沿 / 右沿），斜靠在边上 */
+  [[.18,1,.35],[.63,1,.5],[1,.3,.4],[.86,1,.25]].forEach(([fx,fy,dz],j)=>{const px=fx===1?x+w-t*.4:x+t+(w-2*t)*fx,py=fy===1?y+d-t*.4:y+t+(d-2*t)*fy;
+    o.push({x:px,y:py,z:zt+rc*dz,r:rc*.95,c:CAPCOL[(j*3+1)%CAPCOL.length],th:-60+j*47,m:.3+j*.08})});
+  o.sort((a,b)=>(a.x+a.y+a.z)-(b.x+b.y+b.z));
+  PILES.set(key,o);return o}
+function pileSVG(C){const lw=Math.max(.16,.62*C.w/104);
+  return pileOf(C).map(c=>{const q=P(c.x,c.y,c.z);return `<g transform="translate(${f(q[0])},${f(q[1])})">${INK.capsule(c.r*1.2247,c.c,{th:c.th,m:c.m,lw})}</g>`}).join('')}
+/* top of the heap (screen point) — where capsules leave / land */
+function pileTop(C){const k=C.w/104;return P(C.x+C.w/2,C.y+C.d/2,C.z+C.h+11*k)}
+/* full chest; deg = lid angle. The lid leans back behind the pile when open (>88°) and covers it when closing. */
+const LIDBACK=88;
+const pileOp=deg=>{const v=(deg-24)/36;return v<=0?0:v>=1?1:Math.round(v*100)/100};
+function svg(C,deg,o={}){const L=`<g class="clid">${lid(C,deg)}</g>`;const back=deg>LIDBACK;
+  return `<g class="chest" style="--lw:${C.lw}"><g class="cbody">${bodyBack(C,deg>20)}</g>${back?L:''}<g class="cpile" style="opacity:${pileOp(deg)}">${o.noPile?'':pileSVG(C)}</g><g class="cmouth"></g><g class="cfront">${bodyFront(C)}</g>${back?'':L}</g>`}
+/* set the lid angle on a rendered chest and keep the lid / pile paint order right */
+function setLid(lidG,C,deg){if(!lidG)return;lidG.innerHTML=lid(C,deg);const p=lidG.parentNode,pile=p&&p.querySelector(':scope>.cpile');if(!pile)return;
+  pile.style.opacity=String(pileOp(deg));const back=deg>LIDBACK,isBefore=!!(lidG.compareDocumentPosition(pile)&4);
+  if(back&&!isBefore)p.insertBefore(lidG,pile);else if(!back&&isBefore)p.appendChild(lidG)}
+return {BIG,SMALL,svg,lid,setLid,mouthXY,pileTop,shadow,bodyBack};
 })();
 
 /* ═════════ 标题栏小图标 v11（v10.2 粗描边等距 · 一处红色）═════════ */
