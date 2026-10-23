@@ -16,7 +16,7 @@ import { modKey } from '../lib/native'
 import { chestFx, machFx, openPop, pageFx, reduced } from '../lib/fx'
 import { icons as setIcons, pickIcons } from '../lib/deck'
 import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, sleep, tween } from '../lib/iso'
-import { type Tok, bedTop, capInner, capXY, depth, favIds, pileN, restTokens, settle } from '../lib/heap'
+import { type Tok, bedTop, capD, capInner, capXY, depth, favIds, pileN, restTokens, settle } from '../lib/heap'
 
 // 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
 // cards per page (3 × 2). The open chest holds a static heap of capsules (v0.4.1). Entering: 6 capsules leave the heap
@@ -85,7 +85,7 @@ const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
 // ---- the heap in the chest (v0.4.3 physics, see lib/heap.ts; v0.4.4 count rule)
-// The chest is a decorative, mostly-full box: at rest it holds min(all favourites, 24) capsules — icons + sets + UI,
+// The chest is a decorative, mostly-full box: at rest it holds min(all favourites, 13) capsules (v0.4.5: bigger capsules, was 24) — icons + sets + UI,
 // independent of the tab and of the cards on show; 0 favourites = empty. Flights only borrow capsules: entering a
 // card tab takes the page's 6 capsules off the top (they were put there on top of the resting heap), a page turn / a
 // switch between card tabs takes 6 out and puts the old 6 back (the heap dips during the flight, then is full again),
@@ -189,7 +189,7 @@ function pull(k: string) {
   else {
     const m = svg.getScreenCTM()!
     const q = bedTop()
-    at = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * 6.4 * 2, th: -30 }
+    at = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * capD(), th: -30 }
   }
   renderHeap(true)
   return at
@@ -213,7 +213,7 @@ function heapTop(svg: SVGSVGElement, k = 0) {
   for (const c of caps) if (c.z > best) { best = c.z; q = INK.P(c.x, c.y, c.z + c.r) }
   const m = svg.getScreenCTM()!
   const sx = [-14, 10, -4, 16, -10, 4][k % 6]
-  return { x: m.a * (q[0] + sx) + m.e, y: m.d * q[1] + m.f, s: m.a * 6.4 * 2 }
+  return { x: m.a * (q[0] + sx * 1.6) + m.e, y: m.d * q[1] + m.f, s: m.a * capD() }
 }
 
 function capEl(col: string, size = 30) {
@@ -230,29 +230,49 @@ function capEl(col: string, size = 30) {
 // flies above everything (z 73). The z switch is baked into each flight's keyframes.
 const Z_IN = 70
 const Z_OUT = 73
-let occ: HTMLElement | null = null
-let occN = 0
-function occOn() {
-  const svg = svgEl.value
+/** z-index is interpolated by WAAPI (70 → 71 → 72 → 73 between two keyframes, and at 71 a capsule tied with the
+ *  occluder). v0.4.5: make every z switch a jump, at the earlier keyframe (same offset twice). */
+function zJumps(kf: Keyframe[]) {
+  const o: Keyframe[] = []
+  kf.forEach((k, i) => {
+    const p = kf[i - 1]
+    if (p && p.zIndex !== k.zIndex) o.push({ ...p, zIndex: k.zIndex })
+    o.push(k)
+  })
+  return o
+}
+// v0.4.5: one occluder per chest svg, so the frozen copy of 收藏 that animates out when leaving gets one too (it fades
+// with that layer), and the cards going home dip behind its front wall like on a page turn.
+const occs = new Map<SVGSVGElement, { el: HTMLElement, n: number }>()
+/** Leaving a card tab of 收藏: the frozen layer (and its occluder) stays up while the cards drop into the chest. */
+const LEAVE_T = 620
+const LEAVE_FADE: Keyframe[] = [{ opacity: 1 }, { opacity: 1, offset: 0.62 }, { opacity: 0 }]
+function occOn(svg = svgEl.value, fade = false) {
   if (!svg || reduced()) return false
-  if (!occ) {
+  let o = occs.get(svg)
+  if (!o) {
     const fr = svg.querySelector(':scope>.chest>.cfront')
     if (!fr) return false
     const r = svg.getBoundingClientRect()
-    occ = document.createElement('div')
-    occ.className = 'fcocc'
-    occ.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`
-    occ.innerHTML = `<svg class="ink" viewBox="${svg.getAttribute('viewBox')}" preserveAspectRatio="${svg.getAttribute('preserveAspectRatio') || 'xMidYMid meet'}" style="width:100%;height:100%;overflow:visible"><g class="chest" style="--lw:${CHEST.BIG.lw}">${fr.outerHTML}</g></svg>`
-    document.querySelector('.win')!.appendChild(occ)
+    const el = document.createElement('div')
+    el.className = 'fcocc'
+    el.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`
+    el.innerHTML = `<svg class="ink" viewBox="${svg.getAttribute('viewBox')}" preserveAspectRatio="${svg.getAttribute('preserveAspectRatio') || 'xMidYMid meet'}" style="width:100%;height:100%;overflow:visible"><g class="chest" style="--lw:${CHEST.BIG.lw}">${fr.outerHTML}</g></svg>`
+    document.querySelector('.win')!.appendChild(el)
+    if (fade) anim(el, LEAVE_FADE, { duration: LEAVE_T, fill: 'forwards' })
+    occs.set(svg, o = { el, n: 0 })
   }
-  occN++
+  o.n++
   return true
 }
-function occOff() { if (--occN <= 0) { occN = 0; occ?.remove(); occ = null } }
+function occOff(svg = svgEl.value) {
+  const o = svg && occs.get(svg)
+  if (!o) return
+  if (--o.n <= 0) { o.el.remove(); occs.delete(svg!) }
+}
 /** The chest's front rim as seen on screen (client px): y of the rim line above client x, or −∞ beside the chest.
  *  A capsule whose lower half is below this line (and over the chest) is inside the box, behind the front walls. */
-function rimLine() {
-  const svg = svgEl.value
+function rimLine(svg = svgEl.value) {
   if (!svg) return () => -Infinity
   const m = svg.getScreenCTM()!
   const C = CHEST.BIG
@@ -318,8 +338,9 @@ function launchOut(c: HTMLElement, key: string, k: number): Promise<unknown> | u
   const cp = capEl(c.dataset.c || '', S0)
   cp.style.left = `${cx - S0 / 2}px`
   cp.style.top = `${cy - S0 / 2}px`
-  const dip = occOn()
-  const rim = rimLine()
+  const sv = svgEl.value
+  const dip = occOn(sv)
+  const rim = rimLine(sv)
   const lift = 60 + (k % 3) * 14
   const NK = 14
   const kf: Keyframe[] = []
@@ -333,8 +354,8 @@ function launchOut(c: HTMLElement, key: string, k: number): Promise<unknown> | u
     kf.push({ transform: `${tr(p)} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(rot0 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, zIndex: out ? Z_OUT : Z_IN, offset: ARR * (i / NK) })
   }
   kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, zIndex: Z_OUT, offset: 1 })
-  const fl = anim(cp, kf, { duration: T, easing: 'linear', fill: 'forwards' }).finished
-  const done = () => { cp.remove(); if (dip) occOff() }
+  const fl = anim(cp, zJumps(kf), { duration: T, easing: 'linear', fill: 'forwards' }).finished
+  const done = () => { cp.remove(); if (dip) occOff(sv) }
   fl.then(done, done)
   return Promise.all([card, fl])
 }
@@ -370,8 +391,8 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = fals
     const cp = capEl(c.dataset.c || '', S0)
     cp.style.left = `${cx - S0 / 2}px`
     cp.style.top = `${cy - S0 / 2}px`
-    const dip = live && occOn()
-    const rim = rimLine()
+    const dip = occOn(svg, !live)
+    const rim = rimLine(svg)
     const lift = 56 + (k % 3) * 12
     const kf: Keyframe[] = [{ transform: 'translate(0px,0px) scale(.45)', opacity: 0, zIndex: Z_OUT, offset: 0 }]
     const NK = 16
@@ -382,10 +403,10 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = fals
     pts.forEach(({ p, tt }, i) => {
       if (dip && !inside && tt > 0.5 && cy + p.y + S0 / 2 * (1.04 + (s1 - 1.04) * tt) * 0.5 > rim(cx + p.x)) inside = true
       const off = FOLD * 0.4 + (1 - FOLD * 0.4) * (i / (NK - 1)) // pops out of the card at once and is already moving
-      kf.push({ transform: `${tr(p)} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === NK - 1 && !sp ? 0 : 1, zIndex: inside ? Z_IN : Z_OUT, offset: off })
+      kf.push({ transform: `${tr(p)} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === NK - 1 && !sp ? 0 : live ? 1 : Math.min(1, (1 - tt) / 0.3 + 0.15), zIndex: inside ? Z_IN : Z_OUT, offset: off })
     })
-    const a = anim(cp, kf, { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
-    const done = () => { cp.remove(); if (dip) occOff() }
+    const a = anim(cp, zJumps(kf), { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
+    const done = () => { cp.remove(); if (dip) occOff(svg) }
     a.finished.then(() => { done(); if (sp) land({ k: key, c: sp.c }) }, done)
     jobs.push(a.finished)
   })
@@ -502,7 +523,7 @@ async function tab(k: FavTab) {
   R.folder = null
   clearSel()
   await nextTick()
-  // v0.4.4: the heap does not change with the tab (min(all favourites, 24) at rest)
+  // v0.4.4: the heap does not change with the tab (min(all favourites, 13) at rest)
   if (wasCase && caseMode.value) await swap(g)
   else {
     if (caseMode.value && stack.length) {
@@ -519,7 +540,7 @@ async function tab(k: FavTab) {
   }
   busy = false
 }
-// favourites changed outside a flight (like / unlike, import): the resting heap follows the total (≤ 24)
+// favourites changed outside a flight (like / unlike, import): the resting heap follows the total (≤ 13)
 watch(() => favIds().length, () => { if (!busy) syncCount() })
 function toGacha() { S.swView = 'gacha'; setMode('swipe') }
 function handoff(to: string) {
@@ -545,8 +566,10 @@ function exit(layer: HTMLElement, _to: string) {
   else layer.querySelectorAll<HTMLElement>('.vs').forEach(e => anim(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }))
   const lid = svg?.querySelector('.clid')
   const glow = svg?.querySelector<SVGElement>('.c-glow')
-  if (lid) jobs.push(tween(300, (e) => { CHEST.setLid(lid, CHEST.BIG, 104 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOut))
-  jobs.push(anim(layer, [{ opacity: 1 }, { opacity: 0.8, offset: 0.3 }, { opacity: 0 }], { duration: 340, fill: 'forwards' }).finished)
+  // v0.4.5: with cards on show, the chest stays open while they drop in behind its front wall, then fades (closing
+  // the lid would cover capsules that are still on their way in)
+  if (lid && !cm) jobs.push(tween(300, (e) => { CHEST.setLid(lid, CHEST.BIG, 104 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOut))
+  jobs.push(anim(layer, cm ? LEAVE_FADE : [{ opacity: 1 }, { opacity: 0.8, offset: 0.3 }, { opacity: 0 }], { duration: cm ? LEAVE_T : 340, fill: 'forwards' }).finished)
   return Promise.all(jobs)
 }
 // Arrow keys turn pages (only in the card tabs).

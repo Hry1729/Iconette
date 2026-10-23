@@ -7,7 +7,7 @@
   --m-metal:#dddcd7;--m-metal2:#bdbcb6;--m-metal3:#a9a8a2;--m-cav:#2a272c;--m-win:rgba(58,52,64,.94);
   --m-col:#faf8f3;--m-col-s:#e9e6de;--m-glass-b:rgba(200,220,232,.42);--m-floor:rgba(150,170,184,.4);--m-shadow:rgba(46,40,30,.085);
   --knob:#fbfaf7;--knob-s:#d8d5cd;
-  --c-top:#fbfaf7;--c-l:#f2efe8;--c-r:#dcd8cf;--c-strap:#d3cfc6;--c-strap2:#bfbbb2;--c-cav:#2b2a2e;--c-cav2:#3d3c41;--c-cav3:#353439;--c-in:#3a393e;--c-glow:.95;
+  --c-top:#fbfaf7;--c-l:#f2efe8;--c-r:#dcd8cf;--c-strap:#d3cfc6;--c-strap2:#bfbbb2;--c-cav:#2b2a2e;--c-cav2:#3d3c41;--c-cav3:#353439;--c-floor:#4a494f;--c-in:#3a393e;--c-glow:.95;
 }
 [data-theme="dark"]{
   --inkl:#08080a;--cap-w:#ebe9e4;
@@ -15,7 +15,7 @@
   --m-metal:#8d8d93;--m-metal2:#6d6d73;--m-metal3:#5c5c62;--m-cav:#141316;--m-win:rgba(24,22,28,.96);
   --m-col:#626268;--m-col-s:#4d4d53;--m-glass-b:rgba(170,190,210,.16);--m-floor:rgba(120,135,150,.24);--m-shadow:rgba(0,0,0,.34);
   --knob:#ebe9e4;--knob-s:#a9a7a2;
-  --c-top:#6c6c72;--c-l:#5a5a60;--c-r:#47474d;--c-strap:#4c4c52;--c-strap2:#3a3a3f;--c-cav:#0f0e11;--c-cav2:#1d1c20;--c-cav3:#18171b;--c-in:#1d1c20;--c-glow:.55;
+  --c-top:#6c6c72;--c-l:#5a5a60;--c-r:#47474d;--c-strap:#4c4c52;--c-strap2:#3a3a3f;--c-cav:#0f0e11;--c-cav2:#1d1c20;--c-cav3:#18171b;--c-floor:#27262b;--c-in:#1d1c20;--c-glow:.55;
 }
 .ink{--lw:.95;overflow:visible}
 .ink path,.ink circle,.ink ellipse,.ink rect{stroke:var(--inkl);stroke-width:calc(var(--lw) * 1px);stroke-linejoin:round;stroke-linecap:round}
@@ -63,7 +63,7 @@
 /* chest */
 .ink .c-top{fill:var(--c-top)}.ink .c-l{fill:var(--c-l)}.ink .c-r{fill:var(--c-r)}.ink .c-in{fill:var(--c-in)}
 .ink .c-strap{fill:var(--c-strap);stroke-width:calc(var(--lw) * .6px)}.ink .c-strap2{fill:var(--c-strap2);stroke-width:calc(var(--lw) * .6px)}
-.ink .c-cav{fill:var(--c-cav)}.ink .c-cav2{fill:var(--c-cav2)}.ink .c-cav3{fill:var(--c-cav3)}
+.ink .c-cav{fill:var(--c-cav)}.ink .c-cav2{fill:var(--c-cav2)}.ink .c-cav3{fill:var(--c-cav3)}.ink .c-floor{fill:var(--c-floor)}
 .ink .c-red{fill:#e5484d;stroke-width:calc(var(--lw) * .7px)}
 .ink .c-key{fill:#5a1a1d;stroke:none}
 .ink .c-glow{fill:url(#inkGlow);stroke:none}

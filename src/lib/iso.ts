@@ -233,8 +233,11 @@ function bodyBack(C,open){const {x,y,z,w,d,h}=C,t=Math.max(1.2,w*.05),zt=z+h,k=w
   s+=poly([[x,y,zt],[x+w,y,zt],[x+w,y+d,zt],[x,y+d,zt]],'c-top');
   const inner=[[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+d-t,zt],[x+t,y+d-t,zt]];
   s+=poly(inner,'c-cav');
-  s+=path(D(pr([[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+t,zt-h*.6],[x+t,y+t,zt-h*.6]])),'c-cav2 nst');
-  s+=path(D(pr([[x+t,y+t,zt],[x+t,y+d-t,zt],[x+t,y+d-t,zt-h*.6],[x+t,y+t,zt-h*.6]])),'c-cav3 nst');
+  /* v0.4.5: the inner back + left walls run all the way down to the floor (FLOOR × h below the rim) */
+  const zf=zt-h*FLOOR;
+  s+=path(D(pr([[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+t,zf],[x+t,y+t,zf]])),'c-cav2 nst');
+  s+=path(D(pr([[x+t,y+t,zt],[x+t,y+d-t,zt],[x+t,y+d-t,zf],[x+t,y+t,zf]])),'c-cav3 nst');
+  s+=poly([[x+t,y+t,zf],[x+w-t,y+t,zf],[x+w-t,y+d-t,zf],[x+t,y+d-t,zf]],'c-floor');
   const m=mouthXY(C);s+=`<ellipse class="c-glow" cx="${f(m[0])}" cy="${f(m[1]-2*k)}" rx="${f(52*k)}" ry="${f(26*k)}" style="opacity:${open?1:0}"/>`;
   s+=poly(inner,'il nf');
   return s}
@@ -254,8 +257,11 @@ function bodyFront(C){const {x,y,z,w,d,h}=C,zt=z+h,k=w/104;let s='';
   return s}
 function shadow(C){const {x,y,w,d}=C,e=w*.1;return poly([[x-e*.2,y-e*.2,0],[x+w+e*.6,y-e*.2,0],[x+w+e*.6,y+d+e*1.6,0],[x-e*.2,y+d+e*1.6,0]],'m-shadow')}
 /* v0.4.4 · 箱内胶囊堆由 lib/heap.ts 模拟并渲染（大箱子 FavView，小箱子 GachaView 传入 o.pile 字符串）。
-   数量规则：min(全部收藏数, MAXPILE)，与标签 / 页码无关；0 个收藏 = 空箱。 */
-const MAXPILE=24;
+   数量规则：min(全部收藏数, MAXPILE)，与标签 / 页码无关；0 个收藏 = 空箱。
+   v0.4.5 · 胶囊放大约 1.8 倍（地面一层约 9 个），满箱 = MAXPILE 个，约 2/3 满、中间微微隆起；
+   平整的箱底在檐口下 FLOOR × h，胶囊都落在箱底 / 其它胶囊上，前壁挡住下半截，只露出顶部。 */
+const MAXPILE=13;
+const FLOOR=.5;
 /* full chest; deg = lid angle. The lid leans back behind the pile when open (>88°) and covers it when closing. */
 const LIDBACK=88;
 const pileOp=deg=>{const v=(deg-24)/36;return v<=0?0:v>=1?1:Math.round(v*100)/100};
@@ -265,7 +271,7 @@ function svg(C,deg,o={}){const L=`<g class="clid">${lid(C,deg)}</g>`;const back=
 function setLid(lidG,C,deg){if(!lidG)return;lidG.innerHTML=lid(C,deg);const p=lidG.parentNode,pile=p&&p.querySelector(':scope>.cpile');if(!pile)return;
   pile.style.opacity=String(pileOp(deg));const back=deg>LIDBACK,isBefore=!!(lidG.compareDocumentPosition(pile)&4);
   if(back&&!isBefore)p.insertBefore(lidG,pile);else if(!back&&isBefore)p.appendChild(lidG)}
-return {BIG,SMALL,MAXPILE,svg,lid,setLid,mouthXY,shadow,bodyBack,bodyFront};
+return {BIG,SMALL,MAXPILE,FLOOR,svg,lid,setLid,mouthXY,shadow,bodyBack,bodyFront};
 })();
 
 /* ═════════ 标题栏小图标 v11（v10.2 粗描边等距 · 一处红色）═════════ */

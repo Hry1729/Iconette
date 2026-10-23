@@ -11,7 +11,7 @@ import { gachaFx, swipeApi } from '../lib/swipe'
 import { D, type Item, buildDeck, decide, gachaToday, item, pickIcons, putBack, restart } from '../lib/deck'
 import { bumpChest, chestFx, machFx, pageFx, reduced } from '../lib/fx'
 import { CHEST, GLYPH_GACHA, GM, INK, anim, clamp01, easeIO, easeOut, easeOutBack, sleep, tween } from '../lib/iso'
-import { favIds, heapSVG, restTokens } from '../lib/heap'
+import { capD, favIds, heapSVG, restTokens } from '../lib/heap'
 
 // 图标扭蛋机 (v11): a hand-inked isometric gashapon. Turn the knob (drag a full turn, Space, or the button): the body
 // shakes and the capsules jiggle → the exit flap swings out and a capsule rolls onto the tray → it pops up, flies to the
@@ -434,7 +434,7 @@ async function keep() {
   const m = svg.getScreenCTM()!
   const mx = m.a * mq[0] + m.e
   const my = m.d * mq[1] + m.f
-  const sc = (GM.CR * 1.2247 * m.a) / BR
+  const sc = (capD(C) / 2 * m.a) / BR // v0.4.5: ends at the size of a capsule in the small chest's heap
   setPhase('hop')
   tween(200, (e) => { CHEST.setLid(lid, C, 96 * e); if (glow) glow.style.opacity = String(e) }, easeOut)
   if (big) {
@@ -482,7 +482,7 @@ async function back() {
   busy = false
 }
 
-// v0.4.4: the small chest's heap follows the same rule as 收藏: min(all favourites, 24) capsules, same physics
+// v0.4.4: the small chest's heap follows the same rule as 收藏: min(all favourites, CHEST.MAXPILE = 13 since v0.4.5) capsules, same physics
 // (lib/heap.ts) and sunk into the box. It only shows while the lid is open (keep / arriving from 收藏); a kept capsule
 // joins it after the lid closes.
 const smallPile = () => heapSVG(restTokens(favIds()), CHEST.SMALL)
