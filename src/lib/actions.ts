@@ -46,7 +46,7 @@ export async function copy(id = R.sel) {
   try {
     if (S.fmt === 'png') {
       const ink = getComputedStyle(document.body).getPropertyValue('--ink').trim() || '#1c1c1e'
-      await copyPng(await pngBlob(id, ink))
+      await copyPng(await pngBlob(id, ink), id.replace(':', '-'))
     }
     else { await copyText(code(id)) }
     addRecent(id)

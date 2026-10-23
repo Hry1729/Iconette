@@ -28,6 +28,16 @@ tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
+# v0.4.3: copy PNG as image + file (Explorer / Finder paste), see src/clipfile.rs
+[target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = "5.4"
+png = "0.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSData", "NSArray"] }
+objc2-app-kit = { version = "0.3", features = ["NSPasteboard", "NSPasteboardItem"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -1,3 +1,5 @@
+mod clipfile;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -252,6 +254,13 @@ fn drag_prepare(name: String, svg: String, png: Vec<u8>) -> Result<(String, Stri
     Ok((file.to_string_lossy().into_owned(), icon.to_string_lossy().into_owned()))
 }
 
+/// Copy a PNG as image + file (v0.4.3): pastes as a picture in chat / Figma / Office and as `<name>.png` in
+/// Explorer / Finder. Err on platforms without support → the UI falls back to the plain image copy.
+#[tauri::command]
+fn copy_png_file(name: String, png: Vec<u8>) -> Result<String, String> {
+    clipfile::copy_png_file(&name, &png)
+}
+
 /// Favorites export: write the JSON the UI built to the path picked in the save dialog.
 #[tauri::command]
 fn fav_save(path: String, text: String) -> Result<(), String> {
@@ -352,7 +361,8 @@ pub fn run() {
             suspend_quick_shortcut,
             fav_save,
             fav_load,
-            drag_prepare
+            drag_prepare,
+            copy_png_file
         ])
         .setup(|app| {
             let h = app.handle();

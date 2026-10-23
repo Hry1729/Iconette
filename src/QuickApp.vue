@@ -55,7 +55,7 @@ async function pick(k = i.value) {
   const id = list.value[k]
   if (!id) return
   await load([id])
-  if (S.fmt === 'png') await copyPng(await pngBlob(id, getComputedStyle(document.body).getPropertyValue('--ink').trim() || '#1c1c1e'))
+  if (S.fmt === 'png') await copyPng(await pngBlob(id, getComputedStyle(document.body).getPropertyValue('--ink').trim() || '#1c1c1e'), id.replace(':', '-'))
   else await copyText(code(id))
   addRecent(id)
   await hideQuick()

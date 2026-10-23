@@ -21,10 +21,19 @@ export async function copyText(text: string) {
   }
 }
 
-export async function copyPng(blob: Blob) {
+/** Copy a PNG. In the app (v0.4.3) it goes on the clipboard as image + `<name>.png` file, so it pastes into chat /
+ *  Figma / Office as a picture and into Explorer / Finder as a file; falls back to the plain image copy. */
+export async function copyPng(blob: Blob, name = 'icon') {
   if (inTauri) {
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('copy_png_file', { name, png: Array.from(bytes) })
+      return
+    }
+    catch (e) { console.warn('copy_png_file', e) }
     const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager')
-    return writeImage(new Uint8Array(await blob.arrayBuffer()))
+    return writeImage(bytes)
   }
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
 }
