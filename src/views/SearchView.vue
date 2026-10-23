@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import IconTile from '../components/IconTile.vue'
+import IconWall from '../components/IconWall.vue'
 import UiIcon from '../components/UiIcon.vue'
+import Pop from '../components/Pop.vue'
+import ScopePop from '../components/ScopePop.vue'
+import DetailBar from '../components/DetailBar.vue'
 import { R, S, toggleSet } from '../lib/store'
 import { t } from '../lib/i18n'
-import { INFO, collection, search, shortName } from '../lib/iconify'
+import { INFO, collection, ensureAll, search, shortName } from '../lib/iconify'
 import { zh2en } from '../lib/zh'
 import { openUrl } from '../lib/native'
-import { pick, setMode, toast } from '../lib/actions'
+import { copy, pick, setMode, toast } from '../lib/actions'
+import { fmtLabel } from '../lib/format'
+import { focusApi } from '../lib/swipe'
+import { openPop } from '../lib/fx'
+import { modKey } from '../lib/native'
 
 type State =
   | { k: 'hello' }
@@ -15,16 +23,64 @@ type State =
   | { k: 'results', n: number, sets: number, zh?: string }
   | { k: 'none' }
   | { k: 'zhNone', w: string }
-  | { k: 'loading' }
 
+const emit = defineEmits<{ (e: 'copy', id: string): void, (e: 'enter'): void }>()
 const st = ref<State>({ k: 'hello' })
 const shown = ref(240)
 const body = ref<HTMLElement>()
 const sentinel = ref<HTMLElement>()
-const glyphs = ['lucide:feather', 'ph:leaf', 'tabler:wand', 'mingcute:sparkles-line', 'ri:quill-pen-line']
-const visible = computed(() => R.list.slice(0, shown.value))
-const info = computed(() => (R.set ? INFO[R.set] : undefined))
+const input = ref<HTMLInputElement>()
+const scrolled = ref(false)
 const N = (n?: number) => Number(n || 0).toLocaleString()
+
+// ---- home hero
+ensureAll()
+const stats = computed(() => {
+  const sets = Object.values(INFO).filter(s => !s.hidden)
+  const total = sets.reduce((a, s) => a + (s.total || 0), 0)
+  return { sets: sets.length, total }
+})
+/** 412345 → "41.2 万" (zh) / "412k" (en). */
+const big = (n: number) => S.lang === 'zh' ? `${(n / 1e4).toFixed(n >= 1e6 ? 0 : 1).replace(/\.0$/, '')} 万` : `${Math.round(n / 1e3)}k`
+const TREND: [string, string, string][] = [['箭头', 'arrow', 'ph:arrow-right'], ['用户', 'user', 'lucide:user'], ['设置', 'settings', 'lucide:settings'], ['心形', 'heart', 'ph:heart'], ['github', 'github', 'tabler:brand-github'], ['天气', 'weather', 'lucide:sun']]
+const TODAY = ['ph:planet-duotone', 'ph:paper-plane-tilt-duotone', 'tabler:rocket', 'lucide:sparkles', 'ph:butterfly-duotone', 'mingcute:moon-stars-line', 'ph:coffee-duotone', 'tabler:ghost', 'lucide:feather', 'ph:lightning-duotone', 'tabler:puzzle', 'lucide:compass', 'ph:cat-duotone', 'ph:flower-lotus-duotone', 'mingcute:cake-line', 'tabler:planet', 'lucide:leaf', 'ph:cloud-sun-duotone', 'tabler:mood-smile', 'lucide:gem', 'ph:music-notes-duotone']
+const today = TODAY[Math.floor(Date.now() / 864e5) % TODAY.length]
+const todayStyle = computed(() => (/duotone/.test(today) ? t('stDuo') : /fill|solid/.test(today) ? t('stFill') : t('stLine')))
+const recent = computed(() => S.recent.slice(0, 9))
+function typeIn(q: string) {
+  R.q = ''
+  let i = 0
+  const go = () => { R.q = q.slice(0, ++i); if (i < q.length) setTimeout(go, 70) }
+  go()
+  input.value?.focus()
+}
+
+// ---- docking: the hero search slides up into a compact sticky bar while there is a query or a set
+const docked = computed(() => !!R.q.trim() || !!R.set)
+
+// ---- results
+const STY = {
+  duo: /(^|-)(duotone|twotone|two-tone|duo|bulk|tone)(-|$)/,
+  fill: /(^|-)(fill|filled|solid|bold|fat|glyph)(-|$)/,
+}
+const SOLID_SETS = /^(mdi|material-symbols|ic|fa6-solid|fa-solid|heroicons-solid|mingcute-fill|bxs|zondicons|el|gridicons)$/
+function styleOf(id: string): 'line' | 'fill' | 'duo' {
+  const [p, n] = id.split(':')
+  if (STY.duo.test(n)) return 'duo'
+  if (STY.fill.test(n)) return 'fill'
+  if (SOLID_SETS.test(p) && !/outline|line|thin|light/.test(n)) return 'fill'
+  return 'line'
+}
+const raw = ref<string[]>([])
+watch([raw, () => S.style], () => { R.list = S.style === 'all' || st.value.k === 'hello' ? raw.value : raw.value.filter(id => styleOf(id) === S.style) })
+const visible = computed(() => R.list.slice(0, shown.value))
+const groups = computed(() => {
+  const g = new Map<string, string[]>()
+  for (const id of visible.value) { const p = id.split(':')[0]; if (!g.has(p)) g.set(p, []); g.get(p)!.push(id) }
+  return [...g.entries()]
+})
+const info = computed(() => (R.set ? INFO[R.set] : undefined))
+const scopeIds = computed(() => (S.scopeAll ? [] : S.scope.filter(p => S.sets.includes(p))))
 
 let tok = 0
 let deb: ReturnType<typeof setTimeout> | undefined
@@ -32,32 +88,34 @@ async function run() {
   const my = ++tok
   const q = R.q.trim()
   shown.value = 240
-  if (!q && !R.set) { st.value = { k: 'hello' }; R.list = S.recent.slice(0, 10); return }
+  if (!q && !R.set) { st.value = { k: 'hello' }; raw.value = []; return }
   if (R.set && !q) {
-    st.value = { k: 'set', total: 0 }
     const all = await collection(R.set)
     if (my !== tok) return
-    R.list = all.map(n => `${R.set}:${n}`)
-    st.value = { k: 'set', total: R.list.length }
+    st.value = { k: 'set', total: all.length }
+    raw.value = all.map(n => `${R.set}:${n}`)
     return
   }
-  let pre = R.set || ''
+  let pre = R.set || scopeIds.value.join(',')
   let qq = q
   const m = q.match(/^([a-z0-9-]+):(.*)$/)
   if (m) { pre = m[1]; qq = m[2] || 'a' }
   const tr = zh2en(qq)
-  if (tr === '') { R.list = []; st.value = { k: 'zhNone', w: qq }; return }
+  if (tr === '') { raw.value = []; st.value = { k: 'zhNone', w: qq }; return }
   const zh = tr ? t('zhMap', { a: qq, b: tr }) : undefined
   if (tr) qq = tr
-  const ic = await search(qq, { prefix: pre || undefined })
+  const ic = await search(qq, { prefix: pre || undefined, limit: pre || S.style !== 'all' ? 999 : 480 })
   if (my !== tok) return
-  if (!ic.length) { R.list = []; st.value = { k: 'none' }; return }
+  if (!ic.length) { raw.value = []; st.value = { k: 'none' }; return }
   const rank = (id: string) => { const i = S.sets.indexOf(id.split(':')[0]); return i < 0 ? 99 : i }
-  R.list = pre ? ic : ic.map((id, i) => [id, i] as const).sort((x, y) => (rank(x[0]) - rank(y[0])) || x[1] - y[1]).map(x => x[0])
+  const list = pre && !pre.includes(',') ? ic : ic.map((id, i) => [id, i] as const).sort((x, y) => (rank(x[0]) - rank(y[0])) || x[1] - y[1]).map(x => x[0])
   st.value = { k: 'results', n: ic.length, sets: new Set(ic.map(x => x.split(':')[0])).size, zh }
+  raw.value = list
 }
 watch(() => R.set, () => { R.sel = null; R.q = ''; run(); body.value?.scrollTo(0, 0) })
 watch(() => R.q, () => { clearTimeout(deb); deb = setTimeout(() => { R.sel = null; run() }, 200) })
+watch(() => [S.scopeAll, scopeIds.value.join(), S.style === 'all'], () => { if (R.q.trim()) run() })
+watch(() => S.sets.join(), () => { if (R.q.trim() && !R.set) run() })
 run()
 
 // infinite scroll for big sets
@@ -71,50 +129,123 @@ watch(sentinel, (el) => {
 onBeforeUnmount(() => so?.disconnect())
 
 function likeSet() { if (!R.set) return; const on = toggleSet(R.set); toast(on ? t('likedSet', { n: shortName(R.set) }) : t('unlikedSet')) }
-function sugg(s: string) { R.q = s; nextTick() }
-defineEmits<{ (e: 'copy', id: string): void }>()
+
+// ---- scope pill
+const scopeLabel = computed(() => {
+  if (R.set) return shortName(R.set)
+  return S.scopeAll || !scopeIds.value.length ? t('allSets') : scopeIds.value.length === 1 ? shortName(scopeIds.value[0]) : t('nSets', { n: scopeIds.value.length })
+})
+const stack = computed(() => {
+  const ps = R.set ? [R.set] : S.scopeAll || !scopeIds.value.length ? S.sets.slice(0, 3) : scopeIds.value.slice(0, 3)
+  return ps.filter(p => INFO[p]?.samples?.[0]).map(p => `${p}:${INFO[p].samples![0]}`)
+})
+/** Tab / Shift+Tab: all sets → each pinned set → all. */
+function cycleScope(dir: number) {
+  const opts = ['*', ...S.sets]
+  const cur = R.set ? -1 : S.scopeAll || scopeIds.value.length !== 1 ? 0 : opts.indexOf(scopeIds.value[0])
+  R.set = null
+  const nx = opts[(Math.max(0, cur) + dir + opts.length) % opts.length]
+  if (nx === '*') S.scopeAll = true
+  else { S.scopeAll = false; S.scope = [nx] }
+}
+
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Backspace' && !R.q && R.set) R.set = null
+  if (e.key === 'Tab') { e.preventDefault(); cycleScope(e.shiftKey ? -1 : 1); return }
+  if ((e.key === 'ArrowDown' || e.key === 'Enter') && R.list[0] && !R.sel) { e.preventDefault(); e.stopPropagation(); input.value?.blur(); emit('enter') }
+}
+
+const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
+const dispSize = computed(() => `${Math.max(16, Math.min(40, S.size))}px`)
+const STYLES: ['line' | 'fill' | 'duo', string][] = [['line', 'stLine'], ['fill', 'stFill'], ['duo', 'stDuo']]
+const styleName = computed(() => t(STYLES.find(x => x[0] === S.style)?.[1] || 'stLine'))
+const setStyle = (k: 'line' | 'fill' | 'duo') => { S.style = S.style === k ? 'all' : k }
+
+onMounted(() => {
+  focusApi.focus = () => input.value?.focus()
+  nextTick(() => input.value?.focus())
+})
+onBeforeUnmount(() => { focusApi.focus = () => {} })
 </script>
 
 <template>
-  <nav class="rail">
-    <button class="st" :class="{ on: !R.set }" @click="R.set = null">{{ t('all') }}</button>
-    <span class="div" />
-    <button v-for="p in S.sets" :key="p" class="st" :class="{ on: R.set === p }" @click="R.set = p">
-      <UiIcon v-if="INFO[p]?.samples?.[0]" :name="`${p}:${INFO[p].samples![0]}`" />{{ shortName(p) }}
-    </button>
-    <button class="st add" :title="t('mSets')" @click="setMode('sets'); R.res = 'icons'; R.lib = null"><UiIcon name="lucide:plus" /></button>
-  </nav>
-  <div ref="body" class="body">
-    <div v-if="st.k === 'hello'" class="empty">
-      <div>
-        <div class="glyphs"><UiIcon v-for="g in glyphs" :key="g" :name="g" /></div>
-        <h2>{{ t('hello') }}</h2>
-        <div>{{ t('helloSub') }}</div>
-        <div class="sugg"><button v-for="s in ['arrow', 'home', 'user', 'github', 'check', '箭头']" :key="s" @click="sugg(s)">{{ s }}</button></div>
-        <div v-if="R.list.length" class="strip">
-          <IconTile v-for="id in R.list" :id="id" :key="id" :sel="R.sel === id" @click="pick(id)" @dblclick="$emit('copy', id)" />
+  <div class="body find" :class="{ docked, scrolled: docked && scrolled }">
+    <IconWall />
+    <div class="hero">
+      <div class="eyebrow">
+        <i /><template v-if="stats.total"><b>{{ big(stats.total) }}</b>{{ t('stIcons') }}<span class="dt">·</span><b>{{ stats.sets }}</b>{{ t('stSets') }}<span class="dt">·</span></template>{{ t('stCopy') }}
+      </div>
+      <div class="htitle">{{ t('hello') }}</div>
+      <div class="hsub">{{ t('helloSub', { f: fmtLabel() }) }}</div>
+    </div>
+
+    <label class="sbox" :class="{ has: !!R.q }">
+      <UiIcon name="lucide:search" />
+      <span v-if="R.set" class="tag">{{ shortName(R.set) }}<button @click.prevent="R.set = null"><UiIcon name="lucide:x" /></button></span>
+      <input ref="input" v-model="R.q" :placeholder="R.set ? t('phSet', { n: shortName(R.set) }) : t('ph')" autocomplete="off" spellcheck="false" @keydown="onKey">
+      <button class="clr" tabindex="-1" @click.prevent="R.q = ''; input?.focus()"><UiIcon name="lucide:x" /></button>
+      <span class="kbd">{{ modKey.trim() }}K</span>
+      <button class="scope" :class="{ open: R.pop === 'scope' }" @click.prevent.stop="openPop('scope', $event)">
+        <span class="stk"><UiIcon v-for="x in stack" :key="x" class="ic" :name="x" /></span>{{ scopeLabel }}<UiIcon class="cv" name="lucide:chevron-down" />
+      </button>
+    </label>
+
+    <div class="chips">
+      <span class="lb"><UiIcon name="lucide:trending-up" />{{ t('hot') }}</span>
+      <button v-for="[zh, en, ic] in TREND" :key="en" class="chip" @click="typeIn(S.lang === 'zh' ? zh : en)"><UiIcon class="ic" :name="ic" />{{ S.lang === 'zh' ? zh : en }}</button>
+    </div>
+    <div class="kh"><kbd>↑↓</kbd>{{ t('kSel') }} <kbd>↵</kbd>{{ t('kCopy', { f: fmtLabel() }) }} <kbd>⇥</kbd>{{ t('kTab') }} <kbd>{{ modKey.trim() }}K</kbd>{{ t('kAny') }}</div>
+
+    <div class="hbottom">
+      <div class="panel recent">
+        <div class="phd"><b>{{ t('recentT') }}</b><span class="sp" /><a href="#" @click.prevent="setMode('fav'); R.favTab = 'recent'">{{ t('allHist') }}</a></div>
+        <div v-if="recent.length" class="rrow">
+          <button v-for="id in recent" :key="id" class="rt" :title="`${id} · ${t('copy')}`" @click="copy(id)"><UiIcon :name="id" /></button>
+        </div>
+        <div v-else class="rnone">{{ t('recentNone') }}</div>
+      </div>
+      <div class="panel today">
+        <div class="big"><UiIcon class="ic" :name="today" /></div>
+        <div class="meta">
+          <span class="k">{{ t('todayIcon') }}</span><span class="nm">{{ today.split(':')[1] }}</span>
+          <span class="st">{{ shortName(today.split(':')[0]) }} · {{ todayStyle }}</span>
+          <button class="cp" @click="copy(today)">{{ t('copyF', { f: fmtLabel() }) }}</button>
         </div>
       </div>
     </div>
-    <div v-else-if="st.k === 'none'" class="empty"><div>{{ t('none') }}</div></div>
-    <div v-else-if="st.k === 'zhNone'" class="empty"><div>{{ t('zhNone', { a: st.w }) }}</div></div>
-    <template v-else>
-      <div v-if="st.k === 'set'" class="meta">
-        <b>{{ info?.name || R.set }}</b><span>{{ N(info?.total) }}</span><span>·</span><span>{{ info?.license?.title }}</span>
-        <button class="ib" :title="t('like')" :style="{ color: S.sets.includes(R.set!) ? '#e5484d' : '' }" @click="likeSet">
-          <UiIcon :name="S.sets.includes(R.set!) ? 'ph:heart-fill' : 'lucide:heart'" />
-        </button>
+
+    <div class="res">
+      <div class="rhead">
+        <span v-if="st.k === 'set'" class="rtt">
+          <b>{{ info?.name || R.set }}</b> · {{ N(st.total) }} · {{ info?.license?.title }}
+          <button class="lk" :style="{ color: S.sets.includes(R.set!) ? 'var(--red)' : '' }" :title="t('pin')" @click="likeSet"><UiIcon :name="S.sets.includes(R.set!) ? 'lucide:pin' : 'lucide:pin'" /></button>
+          <a v-if="info?.author?.url" href="#" class="lk" @click.prevent="openUrl(info.author.url!)">{{ info.author.name }} ↗</a>
+        </span>
+        <span v-else-if="st.k === 'results'" class="rtt"><b>“{{ R.q.trim() }}”</b> · {{ t('resN', { n: N(st.n) }) }}<template v-if="!R.set"> · {{ t('resSets', { n: st.sets }) }}</template><template v-if="st.zh"> · {{ st.zh }}</template></span>
+        <span v-else class="rtt" />
         <span class="sp" />
-        <a v-if="info?.author?.url" href="#" @click.prevent="openUrl(info.author.url!)">{{ info.author.name }} ↗</a>
+        <div class="qseg" :title="t('stTip')">
+          <button v-for="[k, l] in STYLES" :key="k" :class="{ on: S.style === k }" @click="setStyle(k)">{{ t(l) }}</button>
+        </div>
+        <span class="vsep" />
+        <button class="qbtn" :class="{ on: R.pop === 'color' }" :title="t('iconColor')" @click.stop="openPop('color', $event)"><span class="dot" :style="{ background: S.color || CHECKER }" />{{ t('color') }}</button>
+        <button class="qbtn" :class="{ on: R.pop === 'size' }" :title="t('size')" @click.stop="openPop('size', $event)"><UiIcon name="lucide:maximize-2" /><b>{{ S.size }}</b></button>
       </div>
-      <template v-if="st.k === 'results'">
-        <div class="meta"><b>{{ t('results', { n: st.n }) }}</b><template v-if="!R.set"><span>·</span><span>{{ t('sets', { n: st.sets }) }}</span></template></div>
-        <div v-if="st.zh" class="zh">{{ st.zh }}</div>
-      </template>
-      <div class="grid">
-        <IconTile v-for="id in visible" :id="id" :key="id" :sel="R.sel === id" @click="pick(id)" @dblclick="$emit('copy', id)" />
+      <div ref="body" class="grid-wrap" :style="{ '--isz': dispSize }" @scroll="scrolled = ($event.target as HTMLElement).scrollTop > 4">
+        <div v-if="st.k === 'none'" class="rempty">{{ t('none') }}</div>
+        <div v-else-if="st.k === 'zhNone'" class="rempty">{{ t('zhNone', { a: st.w }) }}</div>
+        <div v-else-if="!R.list.length && raw.length" class="rempty">{{ t('styleNone', { s: styleName }) }}</div>
+        <template v-for="[p, ids] in groups" v-else :key="p">
+          <div v-if="!R.set" class="gh"><b>{{ shortName(p) }}</b>{{ ids.length }}</div>
+          <div class="igrid">
+            <IconTile v-for="id in ids" :id="id" :key="id" heart :sel="R.sel === id" @click="pick(id)" @dblclick="$emit('copy', id)" />
+          </div>
+        </template>
+        <div ref="sentinel" style="height:1px" />
       </div>
-      <div ref="sentinel" style="height:1px" />
-    </template>
+    </div>
+    <DetailBar />
+
+    <Pop id="scope" :w="304"><ScopePop /></Pop>
   </div>
 </template>

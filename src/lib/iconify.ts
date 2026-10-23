@@ -28,6 +28,7 @@ export async function J<T = any>(u: string, ms = 10000): Promise<T> {
   const to = setTimeout(() => ac.abort(), ms)
   try {
     const r = await fetch(u, { signal: ac.signal })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return await r.json()
   }
   finally { clearTimeout(to) }
@@ -98,8 +99,13 @@ export async function ensureAll() {
   catch {}
 }
 
-export async function collection(p: string): Promise<string[]> {
-  if (COLL[p]) return COLL[p]
+const collPend: Record<string, Promise<string[]> | undefined> = {}
+/** All icon names of a set (deduplicated in-flight requests). */
+export function collection(p: string): Promise<string[]> {
+  if (COLL[p]) return Promise.resolve(COLL[p])
+  return collPend[p] ||= fetchCollection(p).finally(() => { collPend[p] = undefined })
+}
+async function fetchCollection(p: string): Promise<string[]> {
   try {
     const d: any = await J(`${API}/collection?prefix=${p}`)
     COLL[p] = [...new Set<string>([...(d.uncategorized || []), ...Object.values<string[]>(d.categories || {}).flat()])]

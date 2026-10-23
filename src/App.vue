@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from 'vue'
 import TitleBar from './components/TitleBar.vue'
-import DetailBar from './components/DetailBar.vue'
 import Pop from './components/Pop.vue'
 import Toast from './components/Toast.vue'
 import OtherPop from './components/OtherPop.vue'
@@ -17,12 +16,9 @@ import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
 import { autostartEnabled, inTauri, isMac, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
-import { swipeApi } from './lib/swipe'
-import { INFO } from './lib/iconify'
+import { focusApi, swipeApi } from './lib/swipe'
 
-const bar = ref<InstanceType<typeof TitleBar>>()
 const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SwipeView)
-const cats = computed(() => [...new Set(Object.values(INFO).map(s => s.category).filter((c): c is string => !!c && c !== 'Archive / Unmaintained'))])
 const COLORS = [null, '#1c1c1e', '#ffffff', '#e5484d', '#f5a524', '#30a46c', '#3e63dd', '#8e4ec6']
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
@@ -32,7 +28,7 @@ const applyTheme = () => { document.body.dataset.theme = S.theme === 'system' ? 
 watchEffect(applyTheme)
 mq.addEventListener('change', applyTheme)
 watchEffect(() => { document.documentElement.lang = S.lang === 'zh' ? 'zh-CN' : 'en' })
-
+document.body.classList.toggle('mac', isMac)
 
 function openQuick() {
   R.pop = null
@@ -47,10 +43,38 @@ async function toggleAutostart() {
 watchEffect(() => { setCloseToTray(S.closeToTray) })
 watchEffect(() => { setTrayLabels([t('showMain'), t('quick'), t('quitApp')]) })
 
+/** Arrow-key navigation over icon tiles by geometry (works across grouped grids). */
+function nav(key: string) {
+  const ts = [...document.querySelectorAll<HTMLElement>('.body .t')].filter(x => x.offsetParent)
+  const cur = ts.find(x => x.dataset.ic === R.sel)
+  if (!cur) return false
+  const i = ts.indexOf(cur)
+  let nx: HTMLElement | undefined
+  if (key === 'ArrowRight') nx = ts[i + 1]
+  else if (key === 'ArrowLeft') nx = ts[i - 1]
+  else {
+    const r0 = cur.getBoundingClientRect()
+    const cx = r0.left + r0.width / 2
+    const down = key === 'ArrowDown'
+    const rows = ts.map(x => ({ x, r: x.getBoundingClientRect() })).filter(o => (down ? o.r.top > r0.top + 4 : o.r.top < r0.top - 4))
+    if (!rows.length) return true
+    const rowTop = down ? Math.min(...rows.map(o => o.r.top)) : Math.max(...rows.map(o => o.r.top))
+    nx = rows.filter(o => Math.abs(o.r.top - rowTop) < 4).sort((a, b) => Math.abs(a.r.left + a.r.width / 2 - cx) - Math.abs(b.r.left + b.r.width / 2 - cx))[0]?.x
+  }
+  if (nx) select(nx.dataset.ic!, true)
+  return true
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.altKey && e.code === 'Space' && !inTauri) { e.preventDefault(); openQuick(); return }
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setMode((['search', 'sets', 'swipe', 'fav'] as Mode[])[+e.key - 1]); return }
-  const typing = (document.activeElement as HTMLElement)?.tagName === 'INPUT'
+  if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'f')) {
+    e.preventDefault()
+    if (R.mode === 'swipe') setMode('search')
+    requestAnimationFrame(() => focusApi.focus())
+    return
+  }
+  const typing = ['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName)
   if (e.key === 'Escape') {
     if (R.pop) R.pop = null
     else if (R.sel) clearSel()
@@ -59,56 +83,52 @@ function onKey(e: KeyboardEvent) {
   }
   if (typing) return
   if (R.mode === 'swipe') {
+    if (S.swView === 'gacha') {
+      if (e.code === 'Space') { e.preventDefault(); swipeApi.space() }
+      if (e.key === 'ArrowRight') { e.preventDefault(); swipeApi.keep() }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); swipeApi.back() }
+      return
+    }
     const a = ({ ArrowRight: 'like', ArrowLeft: 'nope', ArrowUp: 'open', Enter: 'open' } as const)[e.key as 'Enter']
     if (a) { e.preventDefault(); swipeApi.commit(a) }
     if (e.key.toLowerCase() === 'z') swipeApi.undo()
     if (e.key.toLowerCase() === 'r') swipeApi.shuffle()
     return
   }
-  if (e.key === '/') { e.preventDefault(); bar.value?.focus(); return }
-  if (!R.sel) { if (e.key.length === 1 && /\w/.test(e.key) && !e.metaKey && !e.ctrlKey) bar.value?.focus(); return }
+  if (e.key === '/') { e.preventDefault(); focusApi.focus(); return }
+  if (!R.sel) { if (e.key.length === 1 && /\w/.test(e.key) && !e.metaKey && !e.ctrlKey && R.mode !== 'sets') focusApi.focus(); return }
   if (e.key === 'Enter') { e.preventDefault(); copy(); return }
   if (e.key.toLowerCase() === 'f') { like(); return }
-  const ts = [...document.querySelectorAll<HTMLElement>('.body .t')]
-  const i = ts.findIndex(x => x.dataset.ic === R.sel)
-  if (i < 0) return
-  let c = 1
-  while (c < ts.length && ts[c].offsetTop === ts[0].offsetTop) c++
-  const j = ({ ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + c, ArrowUp: i - c } as Record<string, number>)[e.key]
-  if (j !== undefined && ts[j]) { e.preventDefault(); select(ts[j].dataset.ic!, true) }
+  if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key) && nav(e.key)) e.preventDefault()
 }
 
 onMounted(async () => {
   document.addEventListener('keydown', onKey)
   document.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.pop')) R.pop = null })
   if (inTauri) autostart.value = await autostartEnabled()
-  bar.value?.focus()
   await loadInfo(S.sets)
   ensureAll()
 })
 </script>
 
 <template>
-  <div class="win" :style="{ '--icolor': S.color || 'var(--ink)' }">
-    <TitleBar ref="bar" @enter="R.list[0] && select(R.list[0], true)" />
-    <component :is="view" @copy="(id: string) => copy(id)" />
-    <DetailBar />
+  <div class="win" :data-mode="R.mode" :style="{ '--icolor': S.color || 'var(--ink)' }">
+    <TitleBar />
+    <component :is="view" @copy="(id: string) => copy(id)" @enter="R.list[0] && select(R.list[0], true)" />
 
-    <Pop id="color" style="right:150px;top:46px;width:220px">
+    <Pop id="color" :w="228">
       <div class="lbl">{{ t('iconColor') }}</div>
       <div class="sw"><button v-for="c in COLORS" :key="String(c)" :class="{ on: c === S.color }" :style="{ background: c || CHECKER }" :title="c || 'currentColor'" @click="S.color = c" /></div>
     </Pop>
-    <Pop id="tune" style="right:150px;bottom:58px;width:220px">
-      <div class="lbl">{{ t('color') }}</div>
-      <div class="sw"><button v-for="c in COLORS" :key="String(c)" :class="{ on: c === S.color }" :style="{ background: c || CHECKER }" @click="S.color = c" /></div>
+    <Pop id="size" :w="228">
       <div class="lbl">{{ t('size') }}</div>
       <div class="sz"><input v-model.number="S.size" type="range" min="12" max="96"><span>{{ S.size }}px</span></div>
     </Pop>
-    <Pop id="fmt" style="right:92px;bottom:58px;width:170px">
+    <Pop id="fmt" :w="180">
       <div class="lbl">{{ t('format') }}</div>
       <button v-for="[k] in FMTS" :key="k" class="it" :class="{ on: k === S.fmt }" @click="S.fmt = k; R.pop = null">{{ fmtLabel(k) }}<span class="r ck">✓</span></button>
     </Pop>
-    <Pop id="menu" style="right:12px;top:46px;width:210px">
+    <Pop id="menu" :w="220" place="below">
       <div class="lbl">{{ t('theme') }}</div>
       <button v-for="[k, ic, l] in [['system', 'lucide:monitor', 'sys'], ['light', 'lucide:sun', 'light'], ['dark', 'lucide:moon', 'dark']] as const" :key="k" class="it" :class="{ on: S.theme === k }" @click="S.theme = k">
         <UiIcon :name="ic" />{{ t(l) }}<span class="r ck">✓</span>
@@ -123,17 +143,8 @@ onMounted(async () => {
         <button class="it" :class="{ on: autostart }" @click="toggleAutostart"><UiIcon name="lucide:power" />{{ t('autostart') }}<span class="r ck">✓</span></button>
       </template>
     </Pop>
-    <Pop id="cmp" style="right:180px;bottom:58px;width:300px"><OtherPop /></Pop>
-    <Pop id="folder" style="right:160px;bottom:58px;width:200px"><FolderPop /></Pop>
-    <Pop id="filter" style="right:200px;top:46px;width:260px">
-      <div class="lbl">{{ t('fColor') }}</div>
-      <div class="chips"><button v-for="k in (['any', 'mono', 'multi'] as const)" :key="k" :class="{ on: S.swf.color === k }" @click="S.swf.color = k">{{ t(k === 'any' ? 'fAny' : k === 'mono' ? 'fMono' : 'fMulti') }}</button></div>
-      <div class="lbl">{{ t('fCat') }}</div>
-      <div class="chips"><button :class="{ on: !S.swf.cat }" @click="S.swf.cat = null">{{ t('fAny') }}</button><button v-for="c in cats" :key="c" :class="{ on: S.swf.cat === c }" @click="S.swf.cat = c">{{ c }}</button></div>
-      <hr>
-      <button class="it" :class="{ on: S.swf.lic }" @click="S.swf.lic = !S.swf.lic">{{ t('fLic') }}<span class="r ck">✓</span></button>
-      <button class="it" style="color:var(--muted)" @click="S.swf = { color: 'any', cat: null, lic: false }">{{ t('reset') }}</button>
-    </Pop>
+    <Pop id="cmp" :w="300"><OtherPop /></Pop>
+    <Pop id="folder" :w="210"><FolderPop /></Pop>
     <Toast />
   </div>
 </template>

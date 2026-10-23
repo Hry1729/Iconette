@@ -33,3 +33,35 @@ Object.assign(L.en, { delFolder: 'Delete group', dragHint: 'Drag out as an SVG f
 export function t(k: string, v: Record<string, string | number> = {}): string {
   return (L[S.lang]?.[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => String(v[x] ?? ''))
 }
+
+// v0.2 redesign strings.
+Object.assign(L.zh, {
+  hello: '找个图标', helloSub: '搜索、选中、回车复制 {f}', ph: '搜索图标，例如 箭头', stIcons: '开源图标', stSets: '图标集', stCopy: '回车即复制',
+  hot: '热门', kSel: '选择', kCopy: '复制 {f}', kTab: '切换范围', kAny: '随处聚焦', recentT: '最近复制', allHist: '全部历史 →', recentNone: '复制过的图标会出现在这里',
+  todayIcon: '今日图标', copyF: '复制 {f}', resN: '{n} 个结果', resSets: '{n} 个图标集', stLine: '线性', stFill: '填充', stDuo: '双色', stTip: '再点一次显示全部风格',
+  allSets: '全部图标集', nSets: '{n} 个图标集', pinnedL: '已固定 · 拖动排序', searchSets: '搜索 {n} 个图标集…', matchN: '{n} 个匹配', pin: '固定', pinned: '已固定',
+  addSet: '添加图标集', addSetPh: '输入图标集名称，回车固定…', styleNone: '这个范围里没有「{s}」风格的结果', copyName: '名称', save: '收藏', browseSet: '浏览整套',
+  phSetsN: '搜索 {n} 个图标库：名称、作者或风格', phUIN: '搜索 {n} 个组件库：React、Vue、弹窗…', sortHot: '热门', sortName: '名称', back: '返回',
+  vCards: '卡片', vGacha: '扭蛋', dChest: '我的宝箱', keepS: '收下', skipS: '跳过', combo: '连击 ×{n}', chestKeep: '留着', chestOut: '移出', movedOut: '已移出宝箱',
+  chestDeckNone: '宝箱里还没有图标库或组件库', gFig: '图标扭蛋机', stock: '库存', gToday: '今日', gKept: '已收下', crank: '摇杆', mei: '枚',
+  gHint: '拖动摇杆转一圈 · <kbd>Space</kbd> 拉一下 · <kbd>→</kbd> 收下 · <kbd>←</kbd> 放回', gTitle: '转一圈，<br>开一枚{k}',
+  gDesc: '每枚胶囊里装着一个随机的{k}。喜欢就收进宝箱，不喜欢就放回机器。', pull: '拉一下', newCap: '新胶囊 · {k}', putBack: '放回', keepIt: '收下', keptMsg: '{n} 已收进宝箱',
+  kSet: '图标集', kComp: '组件', kLib: '组件库', gEmpty: '机器空了，换个牌堆或重新开始', cFig: '灵感宝箱', chestT: '你的灵感宝箱', closeChest: '合上宝箱', openChest: '打开宝箱',
+  chestSum: '已收 <b>{n}</b> 件 · 图标 <b>{a}</b> · 图标集 <b>{b}</b> · 组件库 <b>{c}</b>', favd: '已收进灵感宝箱', likedSet: '{n} 已收进宝箱', mFav: '收藏', chestTip: '灵感宝箱',
+  filterN: '筛选', minimize: '最小化', maximize: '最大化', close: '关闭',
+})
+Object.assign(L.en, {
+  hello: 'Find an icon', helloSub: 'Search, pick, press Enter to copy {f}', ph: 'Search icons, e.g. arrow', stIcons: 'open-source icons', stSets: 'sets', stCopy: 'Enter to copy',
+  hot: 'Trending', kSel: 'move', kCopy: 'copy {f}', kTab: 'scope', kAny: 'focus anywhere', recentT: 'Recently copied', allHist: 'History →', recentNone: 'Icons you copy show up here',
+  todayIcon: 'ICON OF THE DAY', copyF: 'Copy {f}', resN: '{n} results', resSets: '{n} sets', stLine: 'Outline', stFill: 'Filled', stDuo: 'Duotone', stTip: 'Click again to show every style',
+  allSets: 'All icon sets', nSets: '{n} sets', pinnedL: 'Pinned · drag to reorder', searchSets: 'Search {n} icon sets…', matchN: '{n} matches', pin: 'Pin', pinned: 'Pinned',
+  addSet: 'Add icon set', addSetPh: 'Type a set name, Enter to pin…', styleNone: 'No {s} icons in this scope', copyName: 'Name', save: 'Save', browseSet: 'Browse set',
+  phSetsN: 'Search {n} icon sets: name, author or style', phUIN: 'Search {n} UI libraries: React, Vue, dialog…', sortHot: 'Popular', sortName: 'Name', back: 'Back',
+  vCards: 'Cards', vGacha: 'Gacha', dChest: 'My chest', keepS: 'KEEP', skipS: 'SKIP', combo: 'Combo ×{n}', chestKeep: 'KEEP', chestOut: 'REMOVE', movedOut: 'Removed from chest',
+  chestDeckNone: 'No saved sets or libraries yet', gFig: 'Icon gacha', stock: 'Stock', gToday: 'Today', gKept: 'Kept', crank: 'Crank', mei: '',
+  gHint: 'Drag the crank a full turn · <kbd>Space</kbd> pull · <kbd>→</kbd> keep · <kbd>←</kbd> put back', gTitle: 'One turn,<br>one {k}',
+  gDesc: 'Every capsule holds a random {k}. Keep it in your chest, or put it back.', pull: 'Pull', newCap: 'New capsule · {k}', putBack: 'Put back', keepIt: 'Keep', keptMsg: '{n} is in your chest',
+  kSet: 'icon set', kComp: 'component', kLib: 'UI library', gEmpty: 'The machine is empty. Pick another deck or start over', cFig: 'Idea chest', chestT: 'Your idea chest', closeChest: 'Close chest', openChest: 'Open chest',
+  chestSum: '<b>{n}</b> saved · icons <b>{a}</b> · sets <b>{b}</b> · libraries <b>{c}</b>', favd: 'Saved to your chest', likedSet: '{n} saved to your chest', mFav: 'Saved', chestTip: 'Idea chest',
+  filterN: 'Filter', minimize: 'Minimize', maximize: 'Maximize', close: 'Close',
+})

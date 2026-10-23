@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 
 export type Mode = 'search' | 'sets' | 'swipe' | 'fav'
 export type Fmt = 'svg' | 'png' | 'vue' | 'jsx' | 'unocss' | 'iconify' | 'dataurl' | 'name'
-export type Deck = 'icons' | 'comp' | 'lib'
+export type Deck = 'icons' | 'comp' | 'lib' | 'chest'
 export type FavTab = 'icons' | 'sets' | 'ui' | 'recent'
 
 const KEY = 'icones-desktop:v1'
@@ -28,6 +28,15 @@ const defaults = {
   deck: 'icons' as Deck,
   /** Closing the main window hides it to the tray instead of quitting. */
   closeToTray: true,
+  /** 划一划 view: swipe cards or the gacha machine. */
+  swView: 'cards' as 'cards' | 'gacha',
+  /** Search scope (范围): all sets, or the checked pinned sets (subset of `sets`). */
+  scopeAll: true,
+  scope: [] as string[],
+  /** Result style filter: all / outline / filled / duotone (approximated from icon names). */
+  style: 'all' as 'all' | 'line' | 'fill' | 'duo',
+  /** Gacha stats. */
+  gacha: { day: 0, n: 0, kept: 0 },
 }
 
 function read(): Partial<typeof defaults> {
@@ -69,6 +78,8 @@ export const R = reactive({
   folder: null as string | null,
   // swipe
   swCount: '',
+  /** Anchor rect of the element that opened the current popover. */
+  popAt: null as null | { l: number, t: number, r: number, b: number },
 })
 
 export function addRecent(id: string) {

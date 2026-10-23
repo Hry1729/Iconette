@@ -1,61 +1,51 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import UiIcon from './UiIcon.vue'
-import { type Deck, R, S, type Mode } from '../lib/store'
+import Logo from './Logo.vue'
+import { R, type Mode } from '../lib/store'
 import { t } from '../lib/i18n'
-import { shortName } from '../lib/iconify'
 import { setMode } from '../lib/actions'
 import { inTauri, isMac, modKey, win } from '../lib/native'
+import { chest, chestCount, openPop } from '../lib/fx'
+import { miniChestSVG } from '../lib/iso'
 
-const emit = defineEmits<{ (e: 'enter'): void }>()
-const input = ref<HTMLInputElement>()
-defineExpose({ focus: () => input.value?.focus() })
-
-const MODES: [Mode, string, string][] = [['search', 'lucide:search', 'mSearch'], ['sets', 'lucide:layout-grid', 'mSets'], ['swipe', 'lucide:layers', 'swipe'], ['fav', 'lucide:heart', 'mFav']]
-const DECKS: [Deck, string][] = [['icons', 'dIcons'], ['comp', 'dComp'], ['lib', 'dLib']]
-const ph = computed(() => {
-  if (R.mode === 'fav') return t('phFav')
-  if (R.mode === 'sets') return t(R.res === 'ui' ? 'phUI' : 'phSets')
-  return R.set ? t('phSet', { n: shortName(R.set) }) : t('ph')
-})
-const dot = computed(() => S.color || 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)')
-const filtered = computed(() => S.swf.color !== 'any' || !!S.swf.cat || S.swf.lic)
+// Title bar = drag + switch. Everything that is not a control carries data-tauri-drag-region
+// (Tauri only starts a drag when the pressed element itself has the attribute).
+const MODES: [Mode, string, string][] = [['search', 'lucide:search', 'mSearch'], ['sets', 'lucide:layout-grid', 'mSets'], ['swipe', 'lucide:layers', 'swipe']]
+const mac = isMac && inTauri
 const showWinControls = inTauri && !isMac
-
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Backspace' && !R.q && R.set) R.set = null
-  if (R.mode !== 'search' && R.mode !== 'fav') return
-  if ((e.key === 'ArrowDown' || e.key === 'Enter') && R.list[0] && !R.sel) { e.preventDefault(); e.stopPropagation(); input.value?.blur(); emit('enter') }
-}
-const pop = (id: string) => { R.pop = R.pop === id ? null : id }
+const count = computed(() => chestCount())
+const chestHost = ref<HTMLElement>()
+onMounted(() => { if (chestHost.value) chestHost.value.innerHTML = miniChestSVG() })
+// Badge digit rolls whenever the count changes or a flight lands.
+const tickKey = ref(0)
+watch([count, () => chest.tick], () => { tickKey.value++ })
 const wmin = async () => (await win()).minimize()
 const wmax = async () => (await win()).toggleMaximize()
 const wclose = async () => (await win()).close()
 </script>
 
 <template>
-  <div class="top" :class="{ mac: isMac && inTauri }" data-tauri-drag-region>
-    <label v-if="R.mode !== 'swipe'" class="q">
-      <UiIcon name="lucide:search" />
-      <span v-if="R.set && R.mode === 'search'" class="tag">{{ shortName(R.set) }}<button @click.prevent="R.set = null">✕</button></span>
-      <input ref="input" v-model="R.q" :placeholder="ph" autocomplete="off" spellcheck="false" @keydown="onKey">
-    </label>
-    <div v-else class="ttl" data-tauri-drag-region>
-      <span data-tauri-drag-region>{{ t('swipe') }}</span><small data-tauri-drag-region>{{ R.swCount }}</small>
-      <span class="dsel"><button v-for="[k, l] in DECKS" :key="k" :class="{ on: S.deck === k }" @click="S.deck = k">{{ t(l) }}</button></span>
+  <div class="tb" :class="{ mac }" data-tauri-drag-region>
+    <div v-if="mac" class="lights-gap" data-tauri-drag-region />
+    <div class="brand" data-tauri-drag-region>
+      <Logo data-tauri-drag-region /><b data-tauri-drag-region>Icônette</b>
     </div>
-    <button v-if="R.mode === 'swipe' && S.deck === 'icons'" class="ib" :class="{ on: filtered }" :title="t('filter')" @click.stop="pop('filter')"><UiIcon name="lucide:list-filter" /></button>
-    <button class="ib" :title="t('iconColor')" @click.stop="pop('color')"><span class="dot" :style="{ background: dot }" /></button>
-    <div class="seg">
+    <div class="drag" data-tauri-drag-region />
+    <div class="modes">
       <button v-for="([m, ic, k], i) in MODES" :key="m" :class="{ on: R.mode === m }" :title="`${t(k)}  ${modKey}${i + 1}`" @click="setMode(m)">
-        <UiIcon :name="ic" /><span data-k>{{ t(k) }}</span>
+        <UiIcon :name="ic" /><span class="lb">{{ t(k) }}</span>
+      </button>
+      <button class="chestbtn" :class="{ on: R.mode === 'fav' }" :title="`${t('chestTip')}  ${modKey}4`" @click="setMode('fav')">
+        <span class="cw"><span ref="chestHost" class="ch" /><span v-if="count" class="badge"><span :key="tickKey" class="tick">{{ count > 99 ? '99+' : count }}</span></span></span>
+        <span class="lb">{{ t('mFav') }}</span>
       </button>
     </div>
-    <button class="ib" @click.stop="pop('menu')"><UiIcon name="lucide:ellipsis" /></button>
+    <button class="tbtn" :class="{ on: R.pop === 'menu' }" @click.stop="openPop('menu', $event)"><UiIcon name="lucide:ellipsis" /></button>
     <div v-if="showWinControls" class="wc">
-      <button title="最小化" @click="wmin"><UiIcon name="lucide:minus" /></button>
-      <button title="最大化" @click="wmax"><UiIcon name="lucide:square" /></button>
-      <button class="x" title="关闭" @click="wclose"><UiIcon name="lucide:x" /></button>
+      <button :title="t('minimize')" @click="wmin"><UiIcon name="lucide:minus" /></button>
+      <button :title="t('maximize')" class="sq" @click="wmax"><UiIcon name="lucide:square" /></button>
+      <button class="x" :title="t('close')" @click="wclose"><UiIcon name="lucide:x" /></button>
     </div>
   </div>
 </template>
