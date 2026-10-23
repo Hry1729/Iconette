@@ -87,3 +87,13 @@ Object.assign(L.en, {
   quickKeyL: 'Quick window key', pressKeys: 'Press keys…', keyTaken: 'Already in use', keyBad: 'Not supported', keyReset: 'Reset to default', keySet: 'Shortcut: {k}', noKey: 'None',
   keyHint: 'Click, then press a new combo. Esc cancels',
 })
+
+// v0.4: favorites export / import.
+Object.assign(L.zh, {
+  favExport: '导出收藏', favImport: '导入收藏', favMerge: '合并', favReplace: '替换', favMergeTip: '保留现有收藏，加入文件里的新项', favReplaceTip: '用文件内容替换现有收藏',
+  favExported: '已导出 {n} 项', favMerged: '已导入 {n} 项新收藏', favReplaced: '已替换为 {n} 项收藏', favBad: '不是有效的收藏文件', favNewer: '文件来自更新的版本，请先更新应用', favIOFail: '读写文件失败',
+})
+Object.assign(L.en, {
+  favExport: 'Export favorites', favImport: 'Import favorites', favMerge: 'Merge', favReplace: 'Replace', favMergeTip: 'Keep what you have and add new items', favReplaceTip: 'Replace your favorites with the file',
+  favExported: 'Exported {n} items', favMerged: 'Imported {n} new items', favReplaced: 'Now {n} favorites', favBad: 'Not a valid favorites file', favNewer: 'Made by a newer version. Update first', favIOFail: 'Could not read or write the file',
+})

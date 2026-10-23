@@ -252,6 +252,27 @@ fn drag_prepare(name: String, svg: String, png: Vec<u8>) -> Result<(String, Stri
     Ok((file.to_string_lossy().into_owned(), icon.to_string_lossy().into_owned()))
 }
 
+/// Favorites export: write the JSON the UI built to the path picked in the save dialog.
+#[tauri::command]
+fn fav_save(path: String, text: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    if p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("json")) != Some(true) {
+        return Err("not a .json file".into());
+    }
+    std::fs::write(p, text).map_err(|e| e.to_string())
+}
+
+/// Favorites import: read the file picked in the open dialog (JSON only, at most 8 MB).
+#[tauri::command]
+fn fav_load(path: String) -> Result<String, String> {
+    let p = std::path::PathBuf::from(&path);
+    let len = std::fs::metadata(&p).map_err(|e| e.to_string())?.len();
+    if len > 8 * 1024 * 1024 {
+        return Err("file too large".into());
+    }
+    std::fs::read_to_string(p).map_err(|e| e.to_string())
+}
+
 /// Where crash / startup errors go: %LOCALAPPDATA%\io.github.hry1729.iconette\logs\iconette.log
 /// (macOS: ~/Library/Logs/io.github.hry1729.iconette/iconette.log). Release builds have no console,
 /// so without this a startup failure is completely silent.
@@ -309,6 +330,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ));
         builder = builder.plugin(tauri_plugin_drag::init());
+        builder = builder.plugin(tauri_plugin_dialog::init());
     }
 
     builder
@@ -325,6 +347,8 @@ pub fn run() {
             set_quick_shortcut,
             reset_quick_shortcut,
             suspend_quick_shortcut,
+            fav_save,
+            fav_load,
             drag_prepare
         ])
         .setup(|app| {

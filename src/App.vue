@@ -7,6 +7,7 @@ import OtherPop from './components/OtherPop.vue'
 import FolderPop from './components/FolderPop.vue'
 import UiIcon from './components/UiIcon.vue'
 import ShortcutItem from './components/ShortcutItem.vue'
+import FavIO from './components/FavIO.vue'
 import SearchView from './views/SearchView.vue'
 import FavView from './views/FavView.vue'
 import SwipeView from './views/SwipeView.vue'
@@ -144,6 +145,8 @@ onMounted(async () => {
         <button class="it" :class="{ on: S.closeToTray }" @click="S.closeToTray = !S.closeToTray"><UiIcon name="lucide:app-window" />{{ t('closeTray') }}<span class="r ck">✓</span></button>
         <button class="it" :class="{ on: autostart }" @click="toggleAutostart"><UiIcon name="lucide:power" />{{ t('autostart') }}<span class="r ck">✓</span></button>
       </template>
+      <hr>
+      <FavIO />
     </Pop>
     <Pop id="cmp" :w="300"><OtherPop /></Pop>
     <Pop id="folder" :w="210"><FolderPop /></Pop>
