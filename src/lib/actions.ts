@@ -15,12 +15,25 @@ export function toast(msg: string, icon = 'lucide:check') {
   tt = setTimeout(() => { toastState.show = false }, 1300)
 }
 
-export function setMode(m: Mode) {
-  R.mode = m
-  R.sel = null
-  R.q = ''
-  R.set = null
-  R.pop = null
+/** A view can delay leaving it to finish an animation (收藏: the capsule case closes first). */
+export const leaveHook: { fav: null | (() => Promise<void>) } = { fav: null }
+let leaving = false
+export function setMode(m: Mode, after?: () => void) {
+  const apply = () => {
+    R.mode = m
+    R.sel = null
+    R.q = ''
+    R.set = null
+    R.pop = null
+    after?.()
+  }
+  if (R.mode === 'fav' && m !== 'fav' && leaveHook.fav) {
+    if (leaving) return
+    leaving = true
+    leaveHook.fav().catch(() => {}).finally(() => { leaving = false; apply() })
+    return
+  }
+  apply()
 }
 
 export async function select(id: string, scroll = false) {
@@ -86,16 +99,14 @@ export function likeUI(id: string) {
 
 /** Open a component library page in Resources. */
 export function openLib(id: string) {
-  if (R.mode !== 'sets') setMode('sets')
-  R.res = 'ui'
-  R.lib = id
-  R.q = ''
+  const go = () => { R.res = 'ui'; R.lib = id; R.q = '' }
+  if (R.mode !== 'sets') setMode('sets', go)
+  else go()
 }
 
 /** Open an icon set (its icons in Find). */
 export function openSet(p: string) {
-  setMode('search')
-  R.set = p
+  setMode('search', () => { R.set = p })
 }
 
 /** Tile click: select, and copy right away when "click to copy" is on. */
