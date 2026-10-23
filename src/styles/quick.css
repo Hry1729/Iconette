@@ -6,3 +6,13 @@ body{display:block;overflow:hidden}
 .qw .qb{flex:1;min-height:0;overflow:auto}
 .qw .grid{gap:2px}
 .qw .qf{flex:none}
+/* v0.2: logo + rounded in-page search style */
+[data-theme="light"]{--logo-bg:#1c1c1e;--logo-fg:#fafaf8;--card:#fff}
+[data-theme="dark"]{--logo-bg:#f2f2f3;--logo-fg:#1c1c1e;--card:#242427}
+.qw .q{height:60px;padding:0 12px;gap:10px;border-bottom:1px solid var(--line)}
+.qw .q .lg{width:22px;height:22px;flex:none}
+.qw .q .lg *{pointer-events:none}
+.qw .qs{flex:1;min-width:0;height:40px;display:flex;align-items:center;gap:9px;padding:0 12px;border-radius:11px;background:var(--card);box-shadow:0 0 0 1px var(--line2),0 8px 20px -14px rgba(0,0,0,.35);color:var(--muted);font-size:16px}
+.qw .qs input{flex:1;min-width:0;font-size:15px;color:var(--text)}
+.qw .qs input::placeholder{color:var(--muted)}
+.qw .t.sel{background:var(--card);color:var(--icolor);box-shadow:0 0 0 1.5px var(--text)}

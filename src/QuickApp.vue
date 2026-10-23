@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch, watchEffect } from 'vue'
 import IconTile from './components/IconTile.vue'
 import UiIcon from './components/UiIcon.vue'
+import Logo from './components/Logo.vue'
 import { S } from './lib/store'
 import { t } from './lib/i18n'
 import { search } from './lib/iconify'
@@ -80,8 +81,11 @@ onMounted(async () => {
 <template>
   <div class="qw" :style="{ '--icolor': S.color || 'var(--ink)' }">
     <label class="q" data-tauri-drag-region>
-      <UiIcon name="lucide:search" />
-      <input ref="input" v-model="q" :placeholder="t('quickHint').replace('⌥', isMac ? '⌥' : 'Alt')" autocomplete="off" spellcheck="false" @keydown="onKey">
+      <Logo data-tauri-drag-region />
+      <span class="qs">
+        <UiIcon name="lucide:search" />
+        <input ref="input" v-model="q" :placeholder="t('quickHint').replace('⌥', isMac ? '⌥' : 'Alt')" autocomplete="off" spellcheck="false" @keydown="onKey">
+      </span>
     </label>
     <div class="qb">
       <div v-if="!list.length" class="qe">{{ busy ? '…' : q ? t('none') : t('noRecent') }}</div>
