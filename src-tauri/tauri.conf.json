@@ -41,6 +41,17 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERENkM5NTdDQjRCOUY2NzYKUldSMjlybTBmSlZzM2VOZlRFZTZCb3IzU2VtYTZLVTl3bXBRWXU5N3BLMDBiYk0veWtlOHgyVEMK",
+      "endpoints": [
+        "https://github.com/Hry1729/icones-desktop/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

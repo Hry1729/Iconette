@@ -97,3 +97,11 @@ Object.assign(L.en, {
   favExport: 'Export favorites', favImport: 'Import favorites', favMerge: 'Merge', favReplace: 'Replace', favMergeTip: 'Keep what you have and add new items', favReplaceTip: 'Replace your favorites with the file',
   favExported: 'Exported {n} items', favMerged: 'Imported {n} new items', favReplaced: 'Now {n} favorites', favBad: 'Not a valid favorites file', favNewer: 'Made by a newer version. Update first', favIOFail: 'Could not read or write the file',
 })
+
+// v0.4: update check.
+Object.assign(L.zh, {
+  updCheck: '检查更新', updChecking: '检查中…', updLatest: '已是最新', updFail: '检查失败', updAvail: '新版本 v{v} 可用', updNow: '更新', updGet: '下载', updLater: '稍后', updInstalling: '正在更新 {p}%',
+})
+Object.assign(L.en, {
+  updCheck: 'Check for updates', updChecking: 'Checking…', updLatest: 'Up to date', updFail: 'Check failed', updAvail: 'v{v} is available', updNow: 'Update', updGet: 'Download', updLater: 'Later', updInstalling: 'Updating {p}%',
+})

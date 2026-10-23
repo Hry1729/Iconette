@@ -39,6 +39,9 @@ const defaults = {
   gacha: { day: 0, n: 0, kept: 0 },
   /** Home bottom-left dock: which card is open (today's icon / recent copies) or none. */
   dock: 'today' as 'today' | 'recent' | 'none',
+  /** Update check: day of the last automatic check, and a version the user dismissed. */
+  updDay: '',
+  updSkip: '',
 }
 
 function read(): Partial<typeof defaults> {
