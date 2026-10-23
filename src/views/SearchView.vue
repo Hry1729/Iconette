@@ -6,15 +6,16 @@ import UiIcon from '../components/UiIcon.vue'
 import Pop from '../components/Pop.vue'
 import ScopePop from '../components/ScopePop.vue'
 import DetailBar from '../components/DetailBar.vue'
-import { R, S, toggleSet } from '../lib/store'
+import { R, S, toggleFav, toggleSet } from '../lib/store'
 import { t } from '../lib/i18n'
-import { INFO, collection, ensureAll, search, shortName } from '../lib/iconify'
+import { INFO, collection, ensureAll, search, shortName, svg } from '../lib/iconify'
 import { zh2en } from '../lib/zh'
 import { openUrl } from '../lib/native'
 import { copy, pick, setMode, toast } from '../lib/actions'
 import { fmtLabel } from '../lib/format'
-import { focusApi } from '../lib/swipe'
-import { openPop } from '../lib/fx'
+import { focusApi, gachaFx } from '../lib/swipe'
+import { flyToChest, openPop } from '../lib/fx'
+import { GACHA_VB, gachaScene } from '../lib/iso'
 import { modKey } from '../lib/native'
 
 type State =
@@ -45,8 +46,25 @@ const big = (n: number) => S.lang === 'zh' ? `${(n / 1e4).toFixed(n >= 1e6 ? 0 :
 const TREND: [string, string, string][] = [['箭头', 'arrow', 'ph:arrow-right'], ['用户', 'user', 'lucide:user'], ['设置', 'settings', 'lucide:settings'], ['心形', 'heart', 'ph:heart'], ['github', 'github', 'tabler:brand-github'], ['天气', 'weather', 'lucide:sun']]
 const TODAY = ['ph:planet-duotone', 'ph:paper-plane-tilt-duotone', 'tabler:rocket', 'lucide:sparkles', 'ph:butterfly-duotone', 'mingcute:moon-stars-line', 'ph:coffee-duotone', 'tabler:ghost', 'lucide:feather', 'ph:lightning-duotone', 'tabler:puzzle', 'lucide:compass', 'ph:cat-duotone', 'ph:flower-lotus-duotone', 'mingcute:cake-line', 'tabler:planet', 'lucide:leaf', 'ph:cloud-sun-duotone', 'tabler:mood-smile', 'lucide:gem', 'ph:music-notes-duotone']
 const today = TODAY[Math.floor(Date.now() / 864e5) % TODAY.length]
-const todayStyle = computed(() => (/duotone/.test(today) ? t('stDuo') : /fill|solid/.test(today) ? t('stFill') : t('stLine')))
-const recent = computed(() => S.recent.slice(0, 9))
+const recent = computed(() => S.recent.slice(0, 7))
+
+// ---- bottom-left dock: one card open at a time (today's icon by default), × collapses it; remembered in settings
+const dockInstant = ref(true)
+function setDock(v: 'today' | 'recent' | 'none') { dockInstant.value = false; S.dock = v }
+const todayFav = computed(() => S.favs.includes(today))
+const tbig = ref<HTMLElement>()
+function saveToday() { const on = toggleFav(today); if (on) flyToChest(tbig.value, svg(today)) }
+
+// ---- bottom-right mini gacha machine → 划一划 · 扭蛋 (shared-element transition, see GachaView)
+const mgSfx = `mg${Math.random().toString(36).slice(2, 6)}`
+const miniSVG = `<svg class="iso10 mgsvg" viewBox="${GACHA_VB.M.join(' ')}" preserveAspectRatio="xMidYMid meet">${gachaScene(mgSfx)}</svg>`
+const mini = ref<HTMLElement>()
+function toGacha() {
+  const el = mini.value?.querySelector('svg') as SVGSVGElement | null
+  if (el) { const r = el.getBoundingClientRect(); gachaFx.flip = { x: r.left, y: r.top, w: r.width, h: r.height, m: el.getScreenCTM()!, html: el.outerHTML } }
+  S.swView = 'gacha'
+  setMode('swipe')
+}
 function typeIn(q: string) {
   R.q = ''
   let i = 0
@@ -162,6 +180,7 @@ const styleName = computed(() => t(STYLES.find(x => x[0] === S.style)?.[1] || 's
 const setStyle = (k: 'line' | 'fill' | 'duo') => { S.style = S.style === k ? 'all' : k }
 
 onMounted(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => { dockInstant.value = false }))
   focusApi.focus = () => input.value?.focus()
   nextTick(() => input.value?.focus())
 })
@@ -176,15 +195,14 @@ onBeforeUnmount(() => { focusApi.focus = () => {} })
         <i /><template v-if="stats.total"><b>{{ big(stats.total) }}</b>{{ t('stIcons') }}<span class="dt">·</span><b>{{ stats.sets }}</b>{{ t('stSets') }}<span class="dt">·</span></template>{{ t('stCopy') }}
       </div>
       <div class="htitle">{{ t('hello') }}</div>
-      <div class="hsub">{{ t('helloSub', { f: fmtLabel() }) }}</div>
     </div>
 
-    <label class="sbox" :class="{ has: !!R.q }">
-      <UiIcon name="lucide:search" />
+    <label class="sbox vA" :class="{ has: !!R.q }">
+      <span class="sic"><UiIcon name="lucide:search" /></span>
       <span v-if="R.set" class="tag">{{ shortName(R.set) }}<button @click.prevent="R.set = null"><UiIcon name="lucide:x" /></button></span>
       <input ref="input" v-model="R.q" :placeholder="R.set ? t('phSet', { n: shortName(R.set) }) : t('ph')" autocomplete="off" spellcheck="false" @keydown="onKey">
       <button class="clr" tabindex="-1" @click.prevent="R.q = ''; input?.focus()"><UiIcon name="lucide:x" /></button>
-      <span class="kbd">{{ modKey.trim() }}K</span>
+      <span class="kbd"><kbd>{{ modKey.trim() }}</kbd><kbd>K</kbd></span>
       <button class="scope" :class="{ open: R.pop === 'scope' }" @click.prevent.stop="openPop('scope', $event)">
         <span class="stk"><UiIcon v-for="x in stack" :key="x" class="ic" :name="x" /></span>{{ scopeLabel }}<UiIcon class="cv" name="lucide:chevron-down" />
       </button>
@@ -194,25 +212,32 @@ onBeforeUnmount(() => { focusApi.focus = () => {} })
       <span class="lb"><UiIcon name="lucide:trending-up" />{{ t('hot') }}</span>
       <button v-for="[zh, en, ic] in TREND" :key="en" class="chip" @click="typeIn(S.lang === 'zh' ? zh : en)"><UiIcon class="ic" :name="ic" />{{ S.lang === 'zh' ? zh : en }}</button>
     </div>
-    <div class="kh"><kbd>↑↓</kbd>{{ t('kSel') }} <kbd>↵</kbd>{{ t('kCopy', { f: fmtLabel() }) }} <kbd>⇥</kbd>{{ t('kTab') }} <kbd>{{ modKey.trim() }}K</kbd>{{ t('kAny') }}</div>
-
-    <div class="hbottom">
-      <div class="panel recent">
-        <div class="phd"><b>{{ t('recentT') }}</b><span class="sp" /><a href="#" @click.prevent="setMode('fav'); R.favTab = 'recent'">{{ t('allHist') }}</a></div>
+    <div class="dock" :class="{ instant: dockInstant }" :data-open="S.dock">
+      <div class="dk-rail">
+        <button class="dkb" :class="{ on: S.dock === 'recent' }" :title="t('recentT')" @click.stop="setDock(S.dock === 'recent' ? 'none' : 'recent')"><UiIcon name="lucide:history" /><i v-if="recent.length" class="cdot" /></button>
+        <button class="dkb today" :class="{ on: S.dock === 'today' }" :title="t('todayIcon')" @click.stop="setDock(S.dock === 'today' ? 'none' : 'today')"><span class="tdi"><UiIcon :name="today" /></span><i class="cdot" /></button>
+      </div>
+      <div class="dk-card c-today" :class="{ open: S.dock === 'today' }">
+        <button class="dkx" :title="t('close')" @click.stop="setDock('none')"><UiIcon name="lucide:x" /></button>
+        <div ref="tbig" class="tbig"><UiIcon :name="today" /></div>
+        <div class="meta">
+          <span class="k">{{ t('todayIcon') }}</span><span class="nm">{{ today.split(':')[1] }}</span>
+          <div class="bts">
+            <button class="btn pri" @click="copy(today)"><UiIcon name="lucide:copy" />{{ t('copyF', { f: fmtLabel() }) }}</button>
+            <button class="btn ghost" :style="{ color: todayFav ? 'var(--red)' : '' }" :title="t('save')" @click="saveToday"><UiIcon :name="todayFav ? 'ph:heart-fill' : 'lucide:heart'" /></button>
+          </div>
+        </div>
+      </div>
+      <div class="dk-card c-recent" :class="{ open: S.dock === 'recent' }">
+        <button class="dkx" :title="t('close')" @click.stop="setDock('none')"><UiIcon name="lucide:x" /></button>
+        <div class="ph"><b>{{ t('recentT') }}</b><span class="sp" /><a href="#" @click.prevent="setMode('fav', () => { R.favTab = 'recent' })">{{ t('allHist') }}</a></div>
         <div v-if="recent.length" class="rrow">
           <button v-for="id in recent" :key="id" class="rt" :title="`${id} · ${t('copy')}`" @click="copy(id)"><UiIcon :name="id" /></button>
         </div>
         <div v-else class="rnone">{{ t('recentNone') }}</div>
       </div>
-      <div class="panel today">
-        <div class="big"><UiIcon class="ic" :name="today" /></div>
-        <div class="meta">
-          <span class="k">{{ t('todayIcon') }}</span><span class="nm">{{ today.split(':')[1] }}</span>
-          <span class="st">{{ shortName(today.split(':')[0]) }} · {{ todayStyle }}</span>
-          <button class="cp" @click="copy(today)">{{ t('copyF', { f: fmtLabel() }) }}</button>
-        </div>
-      </div>
     </div>
+    <button ref="mini" class="minig" :title="`${t('swipe')} · ${t('vGacha')}`" @click="toGacha" v-html="miniSVG" />
 
     <div class="res">
       <div class="rhead">
@@ -242,6 +267,10 @@ onBeforeUnmount(() => { focusApi.focus = () => {} })
           </div>
         </template>
         <div ref="sentinel" style="height:1px" />
+      </div>
+      <div class="khint">
+        <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd>{{ t('kSel') }}</span><span><kbd>↵</kbd>{{ t('kCopy', { f: fmtLabel() }) }}</span><span><kbd>⇥</kbd>{{ t('kTab') }}</span><span><kbd>F</kbd>{{ t('save') }}</span><span><kbd>Esc</kbd>{{ t('clear') }}</span>
+        <span class="sp" /><span class="kr"><kbd>{{ modKey.trim() }}</kbd><kbd>K</kbd>{{ t('kAny') }}</span>
       </div>
     </div>
     <DetailBar />

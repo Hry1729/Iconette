@@ -29,3 +29,6 @@ export function rng(a: number) {
 
 /** Bridge so ⌘K / "/" can focus whichever in-page search box is mounted. */
 export const focusApi = { focus: () => {} }
+
+/** Gacha page hand-off: FLIP origin from the home mini machine, and whether the intro explosion already played this launch. */
+export const gachaFx: { flip: null | { x: number, y: number, w: number, h: number, m: DOMMatrix, html: string }, exploded: boolean } = { flip: null, exploded: false }

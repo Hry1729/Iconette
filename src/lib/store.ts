@@ -37,6 +37,8 @@ const defaults = {
   style: 'all' as 'all' | 'line' | 'fill' | 'duo',
   /** Gacha stats. */
   gacha: { day: 0, n: 0, kept: 0 },
+  /** Home bottom-left dock: which card is open (today's icon / recent copies) or none. */
+  dock: 'today' as 'today' | 'recent' | 'none',
 }
 
 function read(): Partial<typeof defaults> {
