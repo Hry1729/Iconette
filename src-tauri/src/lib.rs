@@ -10,8 +10,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, WindowEvent};
 struct Shell<R: Runtime> {
     close_to_tray: AtomicBool,
     items: Mutex<Option<[MenuItem<R>; 3]>>,
-    /// The global shortcut that actually got registered ("alt+space" / "alt+shift+space"), if any.
-    shortcut: Mutex<Option<&'static str>>,
+    /// The global shortcut that actually got registered (normalized, e.g. "alt+space"), if any.
+    shortcut: Mutex<Option<String>>,
 }
 
 fn show_main<R: Runtime>(app: &AppHandle<R>) {
@@ -74,7 +74,156 @@ fn set_close_to_tray<R: Runtime>(app: AppHandle<R>, on: bool) {
 /// The quick-window shortcut that is really active, so the UI can show it (None: none could be registered).
 #[tauri::command]
 fn quick_shortcut<R: Runtime>(app: AppHandle<R>) -> Option<String> {
-    app.state::<Shell<R>>().shortcut.lock().unwrap().map(str::to_string)
+    app.state::<Shell<R>>().shortcut.lock().unwrap().clone()
+}
+
+/// File holding the user's own quick-window shortcut (one line, e.g. "ctrl+shift+keyk").
+fn shortcut_file<R: Runtime>(app: &AppHandle<R>) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("quick-shortcut.txt"))
+}
+
+#[cfg(desktop)]
+fn saved_shortcut<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
+    let s = std::fs::read_to_string(shortcut_file(app)?).ok()?;
+    let s = s.trim().to_lowercase();
+    (!s.is_empty()).then_some(s)
+}
+
+/// Record the shortcut now in effect, then update the tray item and tell every window.
+#[cfg(desktop)]
+fn set_active_shortcut<R: Runtime>(app: &AppHandle<R>, sc: Option<String>) {
+    let shell = app.state::<Shell<R>>();
+    *shell.shortcut.lock().unwrap() = sc.clone();
+    if let Some(items) = shell.items.lock().unwrap().as_ref() {
+        let _ = items[1].set_accelerator(sc.as_deref());
+    }
+    let _ = app.emit("quick-shortcut", sc);
+}
+
+/// Register the first shortcut in `list` the OS gives us. Never panics; failures are logged.
+#[cfg(desktop)]
+fn register_first<R: Runtime>(app: &AppHandle<R>, list: &[String]) -> Option<String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    for sc in list {
+        match app.global_shortcut().register(sc.as_str()) {
+            Ok(()) => return Some(sc.clone()),
+            Err(e) => log(&format!("global shortcut {sc} unavailable: {e}")),
+        }
+    }
+    None
+}
+
+/// Startup order: the user's saved shortcut, then Alt+Space, then Alt+Shift+Space.
+#[cfg(desktop)]
+fn startup_shortcuts<R: Runtime>(app: &AppHandle<R>) -> Vec<String> {
+    let mut list: Vec<String> = saved_shortcut(app).into_iter().collect();
+    for d in QUICK_SHORTCUTS {
+        if !list.iter().any(|x| x == d) {
+            list.push(d.to_string());
+        }
+    }
+    list
+}
+
+/// Use `accel` (e.g. "ctrl+shift+keyk") for the quick window. Err("taken") when the OS or another
+/// app already holds it, Err("invalid") when it can't be parsed; the old shortcut then stays.
+#[tauri::command]
+fn set_quick_shortcut<R: Runtime>(app: AppHandle<R>, accel: String) -> Result<String, String> {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+        let accel = accel.trim().to_lowercase();
+        if accel.parse::<Shortcut>().is_err() {
+            return Err("invalid".into());
+        }
+        let gs = app.global_shortcut();
+        let old = app.state::<Shell<R>>().shortcut.lock().unwrap().clone();
+        if old.as_deref() != Some(accel.as_str()) {
+            if gs.is_registered(accel.as_str()) {
+                return Err("taken".into());
+            }
+            if let Err(e) = gs.register(accel.as_str()) {
+                log(&format!("global shortcut {accel} unavailable: {e}"));
+                return Err("taken".into());
+            }
+            if let Some(o) = &old {
+                if gs.is_registered(o.as_str()) {
+                    let _ = gs.unregister(o.as_str());
+                }
+            }
+        } else if !gs.is_registered(accel.as_str()) {
+            // Same as before but suspended while recording: put it back.
+            gs.register(accel.as_str()).map_err(|_| "taken".to_string())?;
+        }
+        if let Some(f) = shortcut_file(&app) {
+            if let Some(d) = f.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            if let Err(e) = std::fs::write(&f, &accel) {
+                log(&format!("saving shortcut failed: {e}"));
+            }
+        }
+        set_active_shortcut(&app, Some(accel.clone()));
+        Ok(accel)
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, accel);
+        Err("unsupported".into())
+    }
+}
+
+/// Forget the user's shortcut and go back to Alt+Space (or Alt+Shift+Space if that is taken).
+#[tauri::command]
+fn reset_quick_shortcut<R: Runtime>(app: AppHandle<R>) -> Option<String> {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_global_shortcut::GlobalShortcutExt;
+        if let Some(f) = shortcut_file(&app) {
+            let _ = std::fs::remove_file(f);
+        }
+        let old = app.state::<Shell<R>>().shortcut.lock().unwrap().clone();
+        if let Some(o) = &old {
+            if app.global_shortcut().is_registered(o.as_str()) {
+                let _ = app.global_shortcut().unregister(o.as_str());
+            }
+        }
+        let defaults: Vec<String> = QUICK_SHORTCUTS.iter().map(|s| s.to_string()).collect();
+        let mut got = register_first(&app, &defaults);
+        if got.is_none() {
+            // Keep whatever worked before rather than ending up with no shortcut at all.
+            got = old.filter(|o| app.global_shortcut().register(o.as_str()).is_ok());
+        }
+        set_active_shortcut(&app, got.clone());
+        got
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        None
+    }
+}
+
+/// Pause the quick-window shortcut while the settings key recorder listens (so pressing the
+/// current combo doesn't pop the quick window), and resume it afterwards.
+#[tauri::command]
+fn suspend_quick_shortcut<R: Runtime>(app: AppHandle<R>, suspend: bool) {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_global_shortcut::GlobalShortcutExt;
+        let Some(cur) = app.state::<Shell<R>>().shortcut.lock().unwrap().clone() else { return };
+        let gs = app.global_shortcut();
+        let on = gs.is_registered(cur.as_str());
+        if suspend && on {
+            let _ = gs.unregister(cur.as_str());
+        } else if !suspend && !on {
+            if let Err(e) = gs.register(cur.as_str()) {
+                log(&format!("re-registering {cur} failed: {e}"));
+            }
+        }
+    }
+    #[cfg(not(desktop))]
+    let _ = (app, suspend);
 }
 
 /// Tray menu labels: [show main window, quick window, quit].
@@ -173,29 +322,26 @@ pub fn run() {
             set_close_to_tray,
             set_tray_labels,
             quick_shortcut,
+            set_quick_shortcut,
+            reset_quick_shortcut,
+            suspend_quick_shortcut,
             drag_prepare
         ])
         .setup(|app| {
             let h = app.handle();
 
+            // The user's own shortcut first, then Alt+Space, then Alt+Shift+Space.
             #[cfg(desktop)]
-            let quick_accel: Option<&str> = {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let mut got = None;
-                for sc in QUICK_SHORTCUTS {
-                    match app.global_shortcut().register(sc) {
-                        Ok(()) => { got = Some(sc); break; }
-                        Err(e) => log(&format!("global shortcut {sc} unavailable: {e}")),
-                    }
-                }
-                *app.state::<Shell<tauri::Wry>>().shortcut.lock().unwrap() = got;
-                got.map(|sc| if sc == "alt+space" { "Alt+Space" } else { "Alt+Shift+Space" })
+            let quick_accel: Option<String> = {
+                let got = register_first(h, &startup_shortcuts(h));
+                *app.state::<Shell<tauri::Wry>>().shortcut.lock().unwrap() = got.clone();
+                got
             };
             #[cfg(not(desktop))]
-            let quick_accel: Option<&str> = None;
+            let quick_accel: Option<String> = None;
 
             let show = MenuItem::with_id(h, "show", "显示主窗口", true, None::<&str>)?;
-            let quick = MenuItem::with_id(h, "quick", "速取窗口", true, quick_accel)?;
+            let quick = MenuItem::with_id(h, "quick", "速取窗口", true, quick_accel.as_deref())?;
             let quit = MenuItem::with_id(h, "quit", "退出", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(h)?;
             let menu = Menu::with_items(h, &[&show, &quick, &sep, &quit])?;

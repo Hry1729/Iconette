@@ -6,6 +6,7 @@ import Toast from './components/Toast.vue'
 import OtherPop from './components/OtherPop.vue'
 import FolderPop from './components/FolderPop.vue'
 import UiIcon from './components/UiIcon.vue'
+import ShortcutItem from './components/ShortcutItem.vue'
 import SearchView from './views/SearchView.vue'
 import FavView from './views/FavView.vue'
 import SwipeView from './views/SwipeView.vue'
@@ -15,7 +16,7 @@ import { t } from './lib/i18n'
 import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
-import { autostartEnabled, inTauri, isMac, quickKey, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
+import { accelFromEvent, autostartEnabled, inTauri, isMac, quickAccel, quickKey, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
 import { focusApi, swipeApi } from './lib/swipe'
 
 const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SwipeView)
@@ -66,7 +67,7 @@ function nav(key: string) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.altKey && e.code === 'Space' && !inTauri) { e.preventDefault(); openQuick(); return }
+  if (!inTauri && quickAccel.value && accelFromEvent(e) === quickAccel.value) { e.preventDefault(); openQuick(); return }
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setMode((['search', 'sets', 'swipe', 'fav'] as Mode[])[+e.key - 1]); return }
   if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'f')) {
     e.preventDefault()
@@ -137,6 +138,7 @@ onMounted(async () => {
       <button class="it" @click="S.lang = S.lang === 'zh' ? 'en' : 'zh'"><UiIcon name="lucide:languages" />{{ t('lang') }}<span class="r">{{ S.lang === 'zh' ? '中文' : 'English' }}</span></button>
       <button class="it" :class="{ on: S.click }" @click="S.click = !S.click"><UiIcon name="lucide:mouse-pointer-click" />{{ t('clickCopy') }}<span class="r ck">✓</span></button>
       <button class="it" @click="openQuick"><UiIcon name="lucide:zap" />{{ t('quick') }}<span v-if="quickKey" class="r">{{ quickKey }}</span></button>
+      <ShortcutItem />
       <template v-if="inTauri">
         <hr>
         <button class="it" :class="{ on: S.closeToTray }" @click="S.closeToTray = !S.closeToTray"><UiIcon name="lucide:app-window" />{{ t('closeTray') }}<span class="r ck">✓</span></button>

@@ -77,3 +77,13 @@ Object.assign(L.en, {
   favd: 'Saved to your capsule case', likedSet: '{n} saved', keptMsg: '{n} saved', dChest: 'My case', movedOut: 'Removed from case', chestDeckNone: 'No saved sets or libraries yet',
   gName: 'Gacha', putBackMsg: 'Put back', allHist: 'All →', save: 'Save',
 })
+
+// v0.4: custom quick-window shortcut.
+Object.assign(L.zh, {
+  quickKeyL: '速取快捷键', pressKeys: '按下组合键…', keyTaken: '已被占用', keyBad: '不支持这个组合', keyReset: '恢复默认', keySet: '快捷键：{k}', noKey: '未设置',
+  keyHint: '点击后按下新的组合键，Esc 取消',
+})
+Object.assign(L.en, {
+  quickKeyL: 'Quick window key', pressKeys: 'Press keys…', keyTaken: 'Already in use', keyBad: 'Not supported', keyReset: 'Reset to default', keySet: 'Shortcut: {k}', noKey: 'None',
+  keyHint: 'Click, then press a new combo. Esc cancels',
+})
