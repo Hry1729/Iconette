@@ -16,6 +16,7 @@ import { modKey } from '../lib/native'
 import { chestFx, machFx, openPop, pageFx, reduced } from '../lib/fx'
 import { icons as setIcons, pickIcons } from '../lib/deck'
 import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, sleep, tween } from '../lib/iso'
+import { type Tok, bedTop, capInner, capXY, depth, settle } from '../lib/heap'
 
 // 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
 // cards per page (3 × 2). The open chest holds a static heap of capsules (v0.4.1). Entering: 6 capsules leave the heap
@@ -53,9 +54,9 @@ function delFolder(f: string) { delete S.folders[f]; if (R.folder === f) R.folde
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
 // ---- the chest
-// v0.4.1: slower, deliberate flights — each capsule ~680 ms on an arc, 55 ms stagger (6 cards ≈ 0.95 s);
-// ease-out leaving the chest, ease-in returning to it. A page turn overlaps both (the new page starts 140 ms in).
-const FLY = { out: 680, back: 640, stag: 55, overlap: 140 }
+// v0.4.3: a page turn takes the new page's 6 capsules OUT of the heap and folds the old 6 cards back IN at the same
+// time (same stagger, no lead); the way back is ~18 % slower, so the returning capsules land last, on top of the heap.
+const FLY = { out: 680, back: 800, stag: 55 }
 const items = computed<string[]>(() => (R.favTab === 'ui' ? S.uiFav : R.favTab === 'sets' ? S.sets : []))
 const page = reactive<Record<string, number>>({ sets: 1, ui: 1 })
 const nPages = computed(() => Math.max(1, Math.ceil(items.value.length / 6)))
@@ -82,44 +83,133 @@ const N = (n?: number) => Number(n || 0).toLocaleString()
 const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
-// ---- the heap in the chest (v0.4.2): one capsule per favourite of this tab that is NOT out on the visible page,
-// so heap + cards = the real count (drawn up to CHEST.MAXPILE). 图标 = the icons of the current group (they are not
-// flown out); 最近 is copy history, not favourites → empty chest. During flights `pend` keeps the count honest:
-// `out` = cards of this page whose capsule has not left yet (still in the heap, on top), `back` = cards of the page
-// just turned away whose capsule has not landed yet (not in the heap yet).
-const pend = reactive({ out: new Set<number>(), back: new Set<number>() })
+// ---- the heap in the chest (v0.4.3, see lib/heap.ts): one capsule (token) per favourite of this tab that is not out
+// as a card on the visible page (v0.4.2 count rule). `stack` = the simulated, drawn heap (bottom → top, ≤ MAXDRAW at
+// build); `deep` = capsules of big collections that lie below it (shown as a raised bed). 图标 = the icons of the
+// current group (not flown out); 最近 is copy history, not favourites → empty chest. The build order puts the later
+// pages deepest and the next page right under the top, so turning forward pulls from just below the top and the
+// capsules above fall into the gaps; capsules put back always land on top.
+const MAXDRAW = CHEST.MAXPILE
+let stack: Tok[] = []
+let deep: Tok[] = []
+let lift = 0
+/** Tokens that leave on this turn but whose flight has not started yet (still drawn in the heap). */
+const outQ = new Set<string>()
+const nodes = new Map<string, SVGGElement & { _q?: number[], _tw?: number }>()
 const hcol = (id: string) => { let h = 7; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return INK.CAPCOL[h % INK.CAPCOL.length] }
-const pileCols = computed<string[]>(() => {
-  if (R.favTab === 'recent') return []
-  if (R.favTab === 'icons') return src.value.map(hcol)
-  const n = items.value.length
-  const a = (curPage.value - 1) * 6
-  const rest: string[] = []
-  const top: string[] = []
-  for (let i = 0; i < n; i++) {
-    if (i >= a && i < a + 6) { if (pend.out.has(i)) top.push(tagOf(i)) }
-    else if (!pend.back.has(i)) rest.push(tagOf(i))
+const tokKey = (id: string) => `${R.favTab}:${id}`
+const tokOf = (idx: number): Tok => ({ k: tokKey(items.value[idx]), c: tagOf(idx) })
+/** Rebuild the heap from data (no animation). `withPage`: the visible page's capsules are still in the chest, on top
+ *  (they are about to fly out to the cards). */
+function buildHeap(withPage: boolean) {
+  outQ.clear()
+  let rest: Tok[] = []
+  let top: Tok[] = []
+  if (R.favTab === 'icons') rest = src.value.map(id => ({ k: `icons:${id}`, c: hcol(id) }))
+  else if (caseMode.value) {
+    const a = (curPage.value - 1) * 6
+    for (let i = items.value.length - 1; i >= 0; i--) if (i < a || i >= a + 6) rest.push(tokOf(i))
+    if (withPage) for (let i = Math.min(a + 6, items.value.length) - 1; i >= a; i--) top.push(tokOf(i))
   }
-  return rest.concat(top) // the capsules about to leave sit on top of the heap
-})
-let pileStr = ''
-function drawPile(cols = pileCols.value) {
+  deep = rest.length > MAXDRAW ? rest.slice(0, rest.length - MAXDRAW) : []
+  stack = rest.slice(deep.length).concat(top)
+  // the bed rises with how much is in the chest (stable while paging: the pile count does not change on a turn)
+  lift = Math.min(1, rest.length / 40 + deep.length / 24)
+  nodes.forEach(n => n.remove())
+  nodes.clear()
+  renderHeap(false)
+}
+const pileCount = () => stack.length + deep.length
+const tf = (q: number[]) => `translate(${INK.f(q[0])},${INK.f(q[1])})`
+/** Bounce at the end of a settle: overshoots ~4 %. */
+const settleEase = (t: number) => { const u = t - 1; return 1 + 2.1 * u * u * u + 1.1 * u * u }
+let twSeq = 0
+/** Draw the simulated heap. animate: capsules that moved fall / roll to their new spot (~300 ms, tiny bounce);
+ *  `drop`: these new capsules arrive from a little above (a landing). */
+function renderHeap(animate: boolean, drop?: Set<string>) {
   const g = svgEl.value?.querySelector(':scope>.chest>.cpile')
   if (!g) return
-  const h = CHEST.pileSVG(CHEST.BIG, cols)
-  if (h !== pileStr) { g.innerHTML = h; pileStr = h }
+  const caps = settle(stack, lift)
+  const live = new Set(caps.map(c => c.k))
+  nodes.forEach((n, k) => { if (!live.has(k)) { n.remove(); nodes.delete(k) } })
+  const moves: { n: SVGGElement & { _q?: number[] }, a: number[], b: number[] }[] = []
+  for (const c of caps) {
+    const q = capXY(c)
+    let n = nodes.get(c.k)
+    if (!n) {
+      n = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGGElement & { _q?: number[] }
+      n.dataset.k = c.k
+      n.innerHTML = capInner(c)
+      nodes.set(c.k, n)
+      const from = drop?.has(c.k) && animate ? [q[0], q[1] - 5] : q
+      n.setAttribute('transform', tf(from))
+      n._q = from
+    }
+    const a = n._q || q
+    if (Math.abs(a[0] - q[0]) + Math.abs(a[1] - q[1]) > 0.05) {
+      if (animate && !reduced()) moves.push({ n, a, b: q })
+      else n.setAttribute('transform', tf(q))
+    }
+    n._q = q
+  }
+  // paint far → near
+  caps.slice().sort((A, B) => depth(A) - depth(B)).forEach(c => g.appendChild(nodes.get(c.k)!))
+  if (moves.length) {
+    const id = ++twSeq
+    moves.forEach(m => { (m.n as any)._tw = id })
+    void tween(300, (e) => {
+      for (const m of moves) if ((m.n as any)._tw === id) m.n.setAttribute('transform', tf([m.a[0] + (m.b[0] - m.a[0]) * e, m.a[1] + (m.b[1] - m.a[1]) * e]))
+    }, settleEase)
+  }
 }
-watch(pileCols, c => drawPile(c), { flush: 'post' })
-
-/** Chest mouth in client coordinates. */
-function mouth(svg = svgEl.value!, k = 0) {
-  const q = CHEST.pileTop(CHEST.BIG, Math.min(pileCols.value.length, CHEST.MAXPILE))
+/** Take a capsule out of the heap for its flight: returns where it is on screen (centre, size, seam angle). The
+ *  capsules above it then settle into the gap. A deep one comes up from the bed. */
+function pull(k: string) {
+  outQ.delete(k)
+  const svg = svgEl.value
+  if (!svg) return null
+  const n = nodes.get(k)
+  const cap = settle(stack, lift).find(c => c.k === k)
+  let at: { x: number, y: number, s: number, th: number } | null = null
+  if (n && cap) {
+    const m = svg.getScreenCTM()!
+    const q = n._q || capXY(cap)
+    at = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * cap.r * 1.2247 * 2, th: cap.th }
+  }
+  const si = stack.findIndex(t => t.k === k)
+  if (si >= 0) stack.splice(si, 1)
+  else {
+    const di = deep.findIndex(t => t.k === k)
+    if (di >= 0) deep.splice(di, 1)
+    const m = svg.getScreenCTM()!
+    const q = bedTop(lift)
+    at = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * 6.4 * 2, th: -30 }
+  }
+  renderHeap(true)
+  return at
+}
+/** Final resting spots of capsules put back (on top of the heap as it will be once this turn's capsules are out). */
+function landing(ret: Tok[]) {
+  const fin = settle(stack.filter(t => !outQ.has(t.k)).concat(ret), lift)
+  return new Map(fin.slice(fin.length - ret.length).map(c => [c.k, c]))
+}
+/** A capsule put back lands: it joins the top of the heap. */
+function land(t: Tok) {
+  if (stack.some(x => x.k === t.k) || deep.some(x => x.k === t.k)) return
+  stack.push(t)
+  renderHeap(true, new Set([t.k]))
+}
+/** Top of the heap in client coordinates (for capsules that only drop in and vanish: tab switch, leaving). */
+function heapTop(svg: SVGSVGElement, k = 0) {
+  const caps = settle(stack, lift)
+  let q = bedTop(lift)
+  let best = -Infinity
+  for (const c of caps) if (c.z > best) { best = c.z; q = INK.P(c.x, c.y, c.z + c.r) }
   const m = svg.getScreenCTM()!
-  // spread the exits / landings over the heap so the capsules seem to come from (and sink into) different spots
-  const sx = [-26, 18, -6, 30, -18, 6][k % 6]
-  const sy = [4, -2, 6, 3, -3, 1][k % 6]
-  return { x: m.a * (q[0] + sx) + m.e, y: m.d * (q[1] + sy) + m.f, s: m.a }
+  const sx = [-14, 10, -4, 16, -10, 4][k % 6]
+  return { x: m.a * (q[0] + sx) + m.e, y: m.d * q[1] + m.f, s: m.a * 6.4 * 2 }
 }
+
 function capEl(col: string, size = 30) {
   const d = document.createElement('div')
   d.className = 'flycap fcap11'
@@ -137,51 +227,63 @@ function arcAt(dx: number, dy: number, lift: number, tt: number) {
   return { x: u * u * dx + 2 * u * tt * cx, y: u * u * dy + 2 * u * tt * cy }
 }
 const tr = (p: { x: number, y: number }) => `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`
-/** Capsules leave the heap in the chest one by one, arc over to their card spots and bloom into the cards. */
+const S0 = 30
+/** Capsules leave the heap one by one, arc over to their card slots and bloom into the cards. The start point is
+ *  measured when each capsule actually leaves (after the chest has been laid out / finished its entrance), from the
+ *  capsule as drawn in the heap. */
 function flyOut(delay = 0) {
   const g = grid.value
   if (!g || !svgEl.value) return Promise.resolve()
   const cards = [...g.querySelectorAll<HTMLElement>('.fc')]
-  const S0 = 30
   const jobs: Promise<unknown>[] = []
-  const T = FLY.out
-  const ARR = 0.7 // the capsule reaches the card at 70 %, then blooms
-  const base = (curPage.value - 1) * 6
   cards.forEach((c, k) => {
-    const r = c.getBoundingClientRect()
-    const cx = r.left + r.width / 2
-    const cy = r.top + r.height / 2
     const d0 = delay + k * FLY.stag
-    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + T * 0.55, fill: 'backwards' }).finished); return }
-    const M = mouth(undefined, k)
-    const idx = base + Number(c.dataset.i || k)
-    pend.out.add(idx)
-    void sleep(d0).then(() => { pend.out.delete(idx) }) // the capsule leaves the heap
-    const s0 = Math.max(0.3, (M.s * 6.4 * 2) / S0) // starts at the size of a capsule in the heap
-    const cp = capEl(c.dataset.c || '', S0)
-    cp.style.left = `${cx - S0 / 2}px`
-    cp.style.top = `${cy - S0 / 2}px`
-    const lift = 60 + (k % 3) * 14
-    const N = 14
-    const kf: Keyframe[] = []
-    for (let i = 0; i <= N; i++) {
-      const tt = 1 - (1 - i / N) ** 2.2 // ease-out baked into the path, so the bloom keeps linear time
-      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, tt))} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(-220 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, offset: ARR * (i / N) })
-    }
-    kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, offset: 1 })
-    cp.style.opacity = '0'
-    anim(cp, kf, { duration: T, delay: d0, easing: 'linear', fill: 'forwards' }).finished.then(() => cp.remove(), () => cp.remove())
-    jobs.push(anim(c, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(.3)', offset: ARR - 0.04, easing: 'cubic-bezier(.2,.8,.3,1)' }, { opacity: 1, transform: 'scale(1.02)', offset: 0.92, easing: 'ease-out' }, { opacity: 1, transform: 'none' }], { duration: T, delay: d0, easing: 'linear', fill: 'backwards' }).finished)
+    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + FLY.out * 0.55, fill: 'backwards' }).finished); return }
+    const key = c.dataset.k || ''
+    outQ.add(key)
+    c.style.opacity = '0'
+    jobs.push(sleep(d0).then((): unknown => launchOut(c, key, k)))
   })
   pulse(delay)
   return Promise.all(jobs).catch(() => {})
 }
-/** Cards (in `layer`, a frozen copy) fold into capsules that arc back and sink into the heap. */
-function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, base = -1) {
+function launchOut(c: HTMLElement, key: string, k: number): Promise<unknown> | undefined {
+  c.style.opacity = ''
+  if (!c.isConnected) { outQ.delete(key); return }
+  const at = pull(key)
+  const T = FLY.out
+  const ARR = 0.7 // the capsule reaches the card at 70 %, then blooms
+  const card = anim(c, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(.3)', offset: ARR - 0.04, easing: 'cubic-bezier(.2,.8,.3,1)' }, { opacity: 1, transform: 'scale(1.02)', offset: 0.92, easing: 'ease-out' }, { opacity: 1, transform: 'none' }], { duration: T, easing: 'linear', fill: 'backwards' }).finished
+  if (!at) return card
+  const r = c.getBoundingClientRect()
+  const cx = r.left + r.width / 2
+  const cy = r.top + r.height / 2
+  const s0 = Math.max(0.2, at.s / (S0 * 0.92)) // starts at the size of the capsule in the heap
+  const rot0 = (((at.th + 30) % 360) + 360) % 360 - 360 // its seam angle in the heap, unwinding to the flight pose
+  const cp = capEl(c.dataset.c || '', S0)
+  cp.style.left = `${cx - S0 / 2}px`
+  cp.style.top = `${cy - S0 / 2}px`
+  const lift = 60 + (k % 3) * 14
+  const NK = 14
+  const kf: Keyframe[] = []
+  for (let i = 0; i <= NK; i++) {
+    const tt = 1 - (1 - i / NK) ** 2.2 // ease-out baked into the path, so the bloom keeps linear time
+    kf.push({ transform: `${tr(arcAt(at.x - cx, at.y - cy, lift, tt))} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(rot0 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, offset: ARR * (i / NK) })
+  }
+  kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, offset: 1 })
+  const fl = anim(cp, kf, { duration: T, easing: 'linear', fill: 'forwards' }).finished
+  fl.then(() => cp.remove(), () => cp.remove())
+  return Promise.all([card, fl])
+}
+/** Cards (in `layer`, a frozen copy) fold into capsules that arc back into the chest. `turn`: they land on top of
+ *  this tab's heap and join it; otherwise (tab switch / leaving) they drop in at the top of the heap and vanish. */
+function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = false) {
   const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
-  const S0 = 30
   const jobs: Promise<unknown>[] = []
-  const FOLD = 0.24 // the card folds into its capsule during the first 24 %
+  const FOLD = 0.22 // the card folds into its capsule during the first 22 %
+  const ret: Tok[] = cards.filter(c => !c.classList.contains('empty') && c.dataset.k).map(c => ({ k: c.dataset.k!, c: c.dataset.c || '' }))
+  const spots = turn ? landing(ret) : null
+  const m = svg.getScreenCTM()!
   cards.forEach((c, k) => {
     const r = c.getBoundingClientRect()
     const cx = r.left + r.width / 2
@@ -189,8 +291,12 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, base = -1) 
     const d0 = k * FLY.stag
     jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.3)', offset: FOLD }, { opacity: 0, transform: 'scale(.3)' }], { duration: dur, delay: d0, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' }).finished)
     if (c.classList.contains('empty')) return
-    const M = mouth(svg, 5 - k)
-    const s1 = Math.max(0.3, (M.s * 6.4 * 2) / S0)
+    const key = c.dataset.k || ''
+    const sp = spots?.get(key)
+    let M: { x: number, y: number, s: number }
+    if (sp) { const q = capXY(sp); M = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * sp.r * 1.2247 * 2 } }
+    else { const h = heapTop(svg, k); M = { x: h.x, y: h.y, s: h.s } }
+    const s1 = Math.max(0.2, M.s / (S0 * 0.92))
     const cp = capEl(c.dataset.c || '', S0)
     cp.style.left = `${cx - S0 / 2}px`
     cp.style.top = `${cy - S0 / 2}px`
@@ -199,11 +305,10 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, base = -1) 
     for (let i = 1; i <= 14; i++) {
       const tt = (i / 14) ** 1.9 // ease-in baked into the path
       const off = FOLD + (1 - FOLD) * (i / 14)
-      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, 1 - tt))} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === 14 ? 0 : 1, offset: off })
+      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, 1 - tt))} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === 14 && !sp ? 0 : 1, offset: off })
     }
     const a = anim(cp, kf, { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
-    a.finished.then(() => cp.remove(), () => cp.remove())
-    if (base >= 0) { const idx = base + Number(c.dataset.i || 0); a.finished.then(() => pend.back.delete(idx), () => pend.back.delete(idx)) } // lands in the heap
+    a.finished.then(() => { cp.remove(); if (sp) land({ k: key, c: sp.c }) }, () => cp.remove())
     jobs.push(a.finished)
   })
   return Promise.all(jobs).catch(() => {})
@@ -239,11 +344,12 @@ function flatIn() {
 function enter() {
   const fi = rootEl.value!.querySelector<HTMLElement>('.finfo')!
   anim(fi, [{ opacity: 0, transform: 'translateX(10px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
-  anim(fchest.value!, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
+  anim(fchest.value!, [{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out', fill: 'backwards' })
   anim(fmach.value!, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, delay: 40, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
   const rest = rootEl.value!.querySelectorAll<HTMLElement>('.vs, .fempty')
   rest.forEach(e => anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay: 60, fill: 'backwards' }))
-  if (caseMode.value) flyOut(60)
+  // the capsules leave once the chest is on screen and laid out (positions are measured at launch)
+  if (caseMode.value) flyOut(180)
   else flatIn()
 }
 /** 扭蛋 → here: the big machine shrinks into the small machine behind the chest (same time and curve as the chest). */
@@ -285,19 +391,21 @@ function morphIn(src: DOMRect, msrc: DOMRect | null) {
   const fi = rootEl.value!.querySelector<HTMLElement>('.finfo')!
   anim(fi, [{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 120, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' })
   rootEl.value!.querySelectorAll<HTMLElement>('.vs, .fempty').forEach(e => anim(e, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 160, fill: 'backwards' }))
-  if (caseMode.value) flyOut(300)
+  // after the chest has finished growing into place (440 ms), so the capsules start inside its heap
+  if (caseMode.value) flyOut(470)
   else flatIn()
 }
 async function goPage(n: number) {
   if (!caseMode.value || busy || n < 1 || n > nPages.value || n === curPage.value) return
   busy = true
   const g = ghost()
-  const ob = (curPage.value - 1) * 6
-  if (g) for (let i = ob; i < Math.min(ob + 6, items.value.length); i++) pend.back.add(i)
   page[R.favTab] = n
   await nextTick()
-  const b = g ? flyBack(g, undefined, FLY.back, ob).then(() => g.remove()) : Promise.resolve()
-  await Promise.all([b, flyOut(FLY.overlap)])
+  // out and back start together: flyOut first registers which capsules are leaving, so the returning ones aim for
+  // the top of the heap as it will be once those are out (and they land last: the way back is slower)
+  const o = flyOut(0)
+  const b = g ? flyBack(g, undefined, FLY.back, true).then(() => g.remove()) : Promise.resolve()
+  await Promise.all([b, o])
   busy = false
 }
 async function tab(k: FavTab) {
@@ -305,17 +413,18 @@ async function tab(k: FavTab) {
   busy = true
   const wasCase = caseMode.value
   const g = wasCase ? ghost() : null
-  pend.out.clear()
-  pend.back.clear()
   R.favTab = k
   R.folder = null
   clearSel()
   await nextTick()
-  const b = g ? flyBack(g).then(() => g.remove()) : Promise.resolve()
-  const o = caseMode.value ? flyOut(g ? FLY.overlap : 0) : (flatIn(), Promise.resolve())
+  buildHeap(caseMode.value)
+  const b = g ? flyBack(g, undefined, 640).then(() => g.remove()) : Promise.resolve()
+  const o = caseMode.value ? flyOut(g ? 140 : 0) : (flatIn(), Promise.resolve())
   await Promise.all([b, o])
   busy = false
 }
+// favourites changed outside a flight (like / unlike, import, group switch): rebuild the heap from data
+watch(() => [items.value.join('|'), src.value.join('|'), R.folder], () => { if (!busy) buildHeap(false) })
 function toGacha() { S.swView = 'gacha'; setMode('swipe') }
 function handoff(to: string) {
   toGachaNext = to === 'swipe' && S.swView === 'gacha' && !reduced()
@@ -355,15 +464,15 @@ onMounted(() => {
   focusApi.focus = () => input.value?.focus()
   document.addEventListener('keydown', onKey, true)
   svgEl.value!.innerHTML = CHEST.svg(CHEST.BIG, 104)
-  drawPile()
   msvg.value!.innerHTML = GM.scene({})
   pageFx.exit.fav = exit
   pageFx.handoff.fav = handoff
-  W.__fav = { get busy() { return busy }, goPage, tab, get page() { return curPage.value } }
+  W.__fav = { get busy() { return busy }, goPage, tab, get page() { return curPage.value }, get pile() { return pileCount() }, get drawn() { return nodes.size } }
   const src = chestFx.from
   const msrc = machFx.from
   chestFx.from = null
   machFx.from = null
+  buildHeap(caseMode.value)
   if (src && !reduced()) morphIn(src, msrc)
   else enter()
 })
@@ -406,13 +515,13 @@ const W = window as any
         <div ref="grid" class="fgrid10">
           <template v-for="c in cardItems" :key="`${R.favTab}:${curPage}:${c.i}`">
             <div v-if="!c.id" class="fc empty" :data-i="c.i" />
-            <div v-else-if="R.favTab === 'sets'" class="fc set" :data-i="c.i" :data-c="cardTag(c.idx)" @click="openCard(c.id)">
+            <div v-else-if="R.favTab === 'sets'" class="fc set" :data-i="c.i" :data-c="cardTag(c.idx)" :data-k="tokKey(c.id)" @click="openCard(c.id)">
               <div class="fh"><i class="fdot" :style="{ background: cardTag(c.idx) }" /><b>{{ INFO[c.id]?.name || c.id }}</b><small>{{ N(INFO[c.id]?.total) }}</small>
                 <button class="ib hrt" :title="t('unfavd')" @click.stop="likeSet(c.id)"><Heart on /></button></div>
               <div class="fi"><UiIcon v-for="n in (setIcons[c.id] || (INFO[c.id]?.samples || []).map(x => `${c.id}:${x}`)).slice(0, 10)" :key="n" :name="n" /></div>
               <div class="fm">{{ [INFO[c.id]?.author?.name, INFO[c.id]?.license?.title].filter(Boolean).join(' · ') }}</div>
             </div>
-            <div v-else class="fc lib" :data-i="c.i" :data-c="cardTag(c.idx)" @click="openCard(c.id)">
+            <div v-else class="fc lib" :data-i="c.i" :data-c="cardTag(c.idx)" :data-k="tokKey(c.id)" @click="openCard(c.id)">
               <div class="fh"><i class="fdot" :style="{ background: cardTag(c.idx) }" /><b>{{ c.id.includes('/') ? ukl(c.id.split('/')[1]) : UI(c.id)?.name }}</b><small>{{ c.id.includes('/') ? UI(libOf(c.id))?.name : UI(c.id)?.fw }}</small>
                 <button class="ib hrt" :title="t('unfavd')" @click.stop="likeUI(c.id)"><Heart on /></button></div>
               <div v-if="c.id.includes('/')" class="fdemo"><DemoFrame :lib="libOf(c.id)" :keys="[c.id.split('/')[1]]" cls="one" /></div>
