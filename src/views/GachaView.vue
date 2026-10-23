@@ -98,15 +98,59 @@ function layout() {
   // the 扭一下 button sits right next to the knob (knob centre ≈ scene (19, 2.6); its right edge ≈ x 27)
   const kq = INK.P(GM.W + 2, GM.DP - GM.DIAL.u, GM.BH - GM.DIAL.v)
   lay.value = { bx: W / 2 + (kq[0] + 12 - MC.x) * s, by: cy + (kq[1] - MC.y) * s, cy }
-  // moved: machine + small chest (scene x −36…82, centre ≈ 23) centred in the space left of the card
-  const free = W - 22 - 262 - 18
-  const dx = free / 2 - (W / 2 + 23 * s * MK)
+  // v0.4.3 moved layout: [machine + small chest] gap [card] is centred as one group with equal outer margins
+  // (right margin ≥ 32 px); the card is vertically centred on the machine's visual centre, clear of the header.
+  // horizontal extent from the drawn shadow/machine/chest; clamped to the design range (scene x −40…80) in case a
+  // transient element (drop capsule, open flap) is measured mid-animation
+  const g0 = groupBox()
+  const bb = { x0: Math.max(W / 2 - 42 * s, Math.min(W / 2 - 30 * s, g0?.x0 ?? -Infinity)), x1: Math.min(W / 2 + 80 * s, Math.max(W / 2 + 70 * s, g0?.x1 ?? Infinity)) }
+  const gw = (bb.x1 - bb.x0) * MK
+  const cw = Math.round(Math.min(316, Math.max(262, W * 0.25)))
+  const gap = Math.round(Math.min(84, Math.max(36, W * 0.06)))
+  const side = Math.max(32, (W - gw - gap - cw) / 2)
+  // the move is translateX(dx) scale(MK) about (W/2, cy): x' = W/2 + (x − W/2)·MK + dx
+  const dx = side + gw / 2 - (W / 2 + ((bb.x0 + bb.x1) / 2 - W / 2) * MK)
   el.style.setProperty('--gdx', `${INK.f(dx)}px`)
   el.style.setProperty('--gk', String(MK))
   el.style.setProperty('--gox', `${INK.f(W / 2)}px`)
   el.style.setProperty('--goy', `${INK.f(cy)}px`)
   root.value?.style.setProperty('--gcy', `${INK.f(cy)}px`)
+  // visual centre of the machine after the move (globe top −84 … base +47 in scene units ≈ MC.y)
+  const mvy = cy + (-18.5 - MC.y) * s * MK
+  cardBox = { l: W - side - cw, w: cw, cy: mvy, H }
+  placeCard()
   if (big && phase.value === 'reveal') parkCap()
+}
+/** Horizontal extent of the machine (+ its shadow) and small chest in unmoved stage pixels: getBBox in each
+ *  element's own space mapped through getCTM (element → svg viewport, which fills the stage; the stage's CSS move
+ *  transform is not included). */
+function groupBox() {
+  let x0 = Infinity
+  let x1 = -Infinity
+  for (const q of ['.mach', '.m-sh', '.chestg']) {
+    const e = svg.querySelector(q) as SVGGraphicsElement | null
+    try {
+      const b = e?.getBBox()
+      const m = e?.getCTM()
+      if (!b || !b.width || !m) continue
+      for (const [x, y] of [[b.x, b.y], [b.x + b.width, b.y + b.height], [b.x, b.y + b.height], [b.x + b.width, b.y]]) { const X = m.a * x + m.c * y + m.e; x0 = Math.min(x0, X); x1 = Math.max(x1, X) }
+    }
+    catch {}
+  }
+  return Number.isFinite(x0) ? { x0, x1 } : null
+}
+/** Card geometry in stage (= .anat) coordinates, computed by layout(). */
+let cardBox = { l: 0, w: 262, cy: 200, H: 400 }
+const CARD_TOP = 48 // leaves room for the capsule resting on the corner below the header row
+function placeCard() {
+  const c = card.value
+  if (!c) return
+  const h = c.offsetHeight || 240
+  const top = Math.max(CARD_TOP, Math.min(cardBox.cy - h / 2, cardBox.H - 12 - h))
+  c.style.left = `${Math.round(cardBox.l)}px`
+  c.style.right = 'auto'
+  c.style.width = `${cardBox.w}px`
+  c.style.top = `${Math.round(top)}px`
 }
 let ro: ResizeObserver | null = null
 // the move is a CSS transition; scale its duration with the screenshot SLOW factor
@@ -315,6 +359,7 @@ async function dispense() {
   cur.value = it
   curIcons.value = it.k === 'set' ? (await pickIcons(it.v)).slice(0, 10) : []
   await nextTick()
+  placeCard()
   const r = dc.getBoundingClientRect()
   const R0 = r.width / 2
   const cr = card.value!.getBoundingClientRect()
@@ -334,8 +379,9 @@ async function dispense() {
   setPhase('reveal')
   busy = false
 }
-/** v0.4.1: the capsule rests on the card's top-right corner (opened) until the card is kept / put back. */
-const capSpot = (cr: DOMRect) => ({ x: cr.right - 22 - BR, y: cr.top + 2 - BR })
+/** The capsule rests on the card's top-right corner (opened) until the card is kept / put back. v0.4.3: tucked
+ *  inward (centre 34 px in from the right edge, 8 px below the top) so the opened halves stay inside the page. */
+const capSpot = (cr: DOMRect) => ({ x: cr.right - 34 - BR, y: cr.top + 8 - BR })
 /** Pin the resting capsule in place with a plain style transform (no running animation), e.g. after a resize. */
 function parkCap() {
   if (!big) return
