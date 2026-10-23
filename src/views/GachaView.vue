@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import UiIcon from '../components/UiIcon.vue'
 import DemoFrame from '../components/DemoFrame.vue'
 import { S } from '../lib/store'
@@ -14,11 +14,17 @@ import { CHEST, GLYPH_GACHA, GM, INK, anim, clamp01, easeIO, easeOut, easeOutBac
 
 // 图标扭蛋机 (v11): a hand-inked isometric gashapon. Turn the knob (drag a full turn, Space, or the button): the body
 // shakes and the capsules jiggle → the exit flap swings out and a capsule rolls onto the tray → it pops up, flies to the
-// card spot and splits open into the card. Keep → it hops into the small chest beside the machine; put back → it flies
+// card's top-right corner and splits open into the card; the opened capsule stays perched there until the card is
+// kept / put back (v0.4.1). Idle: the machine is centred with the 扭一下 button beside its knob; a turn slides the
+// machine (scaled down) to the left for the card and it returns to the centre once the card is dealt with. Keep → it hops into the small chest beside the machine; put back → it flies
 // back into the globe. Shared elements: home mini machine → this machine (FLIP); 收藏 ↔ here (chest + machine).
 const root = ref<HTMLElement>()
 const svgEl = ref<SVGSVGElement>()
 const card = ref<HTMLElement>()
+const stage = ref<HTMLElement>()
+/** v0.4.1: idle = machine centred; a turn slides it (scaled down) to the left to make room for the card. */
+const aside = ref(false)
+const lay = ref({ bx: 0, by: 0, cy: 0 })
 const phase = ref<'idle' | 'busy' | 'reveal'>('idle')
 const ang = ref(0)
 const cur = ref<Item | null>(null)
@@ -31,6 +37,8 @@ let big: HTMLElement | null = null
 let bigPos = { x: 0, y: 0 }
 let hiddenPc: SVGGElement | null = null
 let cap = { c: '#e5484d', th: -24, m: 0.4 }
+/** Resting rotation of the flying capsule: turns its seam to the default −24° so the coloured half points up-left. */
+let capRot = 0
 const BR = 24
 const W = window as any
 /** Exposed for screenshots/tests: animation phase. */
@@ -69,8 +77,40 @@ const fades = () => {
   const host = root.value!
   const rest = [...(host.parentElement?.children || [])].filter(c => c !== host && !c.classList.contains('pop')) as HTMLElement[]
   const inner = [...host.children].filter(c => !c.classList.contains('gstage') && !c.classList.contains('gcard')) as HTMLElement[]
-  return [...rest, ...inner]
+  return [...rest, ...inner, ...host.querySelectorAll<HTMLElement>('.gknob')]
 }
+
+// ---- layout (v0.4.1)
+// The stage covers the whole page; the viewBox is computed so the machine (not machine + chest) is centred
+// horizontally and sits optically centred under the header. Moving left is a CSS transform on the stage
+// (transform only), so getScreenCTM-based geometry (knob drag, capsule paths) keeps working while it moves.
+const MC = { x: 0, y: -20 } // machine centre in scene units (globe top ≈ −84, base + shadow ≈ +47)
+const MK = 0.8 // scale when moved left
+function layout() {
+  const el = stage.value
+  if (!el || !svg) return
+  const W = el.clientWidth
+  const H = el.clientHeight
+  if (!W || !H) return
+  const s = Math.min(2.55, (H * 0.8) / 134, (W * 0.62) / 134)
+  const cy = H * 0.46
+  svg.setAttribute('viewBox', [MC.x - W / 2 / s, MC.y - cy / s, W / s, H / s].map(INK.f).join(' '))
+  // the 扭一下 button sits right next to the knob (knob centre ≈ scene (19, 2.6); its right edge ≈ x 27)
+  const kq = INK.P(GM.W + 2, GM.DP - GM.DIAL.u, GM.BH - GM.DIAL.v)
+  lay.value = { bx: W / 2 + (kq[0] + 12 - MC.x) * s, by: cy + (kq[1] - MC.y) * s, cy }
+  // moved: machine + small chest (scene x −36…82, centre ≈ 23) centred in the space left of the card
+  const free = W - 22 - 262 - 18
+  const dx = free / 2 - (W / 2 + 23 * s * MK)
+  el.style.setProperty('--gdx', `${INK.f(dx)}px`)
+  el.style.setProperty('--gk', String(MK))
+  el.style.setProperty('--gox', `${INK.f(W / 2)}px`)
+  el.style.setProperty('--goy', `${INK.f(cy)}px`)
+  root.value?.style.setProperty('--gcy', `${INK.f(cy)}px`)
+  if (big && phase.value === 'reveal') parkCap()
+}
+let ro: ResizeObserver | null = null
+// the move is a CSS transition; scale its duration with the screenshot SLOW factor
+watch(aside, () => { if (stage.value) stage.value.style.transitionDuration = `${720 * (W.SLOW || 1)}ms` }, { flush: 'sync' })
 
 // ---- shared elements
 /** Home mini machine → this machine (FLIP); the rest of the page fades in; the small chest drops in after. */
@@ -148,13 +188,13 @@ async function chestIn(src: DOMRect, msrc: DOMRect | null) {
   await tween(420, (e, tt) => {
     const sc = s0 + (1 - s0) * e
     g.setAttribute('transform', `translate(${INK.f(tx0 * (1 - e))},${INK.f(ty0 * (1 - e))}) scale(${INK.f(sc)})`)
-    lid.innerHTML = CHEST.lid(C, 104 * (1 - easeOut(clamp01(tt * 1.15))))
+    CHEST.setLid(lid, C, 104 * (1 - easeOut(clamp01(tt * 1.15))))
     if (glow) glow.style.opacity = String(1 - tt)
     mT?.(e)
   }, tt => 1 - (1 - tt) ** 3)
   g.removeAttribute('transform')
   mach.removeAttribute('transform')
-  lid.innerHTML = CHEST.lid(C, 0)
+  CHEST.setLid(lid, C, 0)
   anim(g, [{ transform: 'translateY(0)' }, { transform: 'translateY(.8px)' }, { transform: 'none' }], { duration: 200, easing: 'ease-out' })
   setPhase('')
   busy = false
@@ -218,7 +258,7 @@ function bindKnob() {
     if (d < -180) d += 360
     last = a
     if (d > 0) { acc += d; moved = true; setKnob(ang.value + d); jiggle(Math.min(1, d / 12)) }
-    if (acc >= 360) { drag = false; busy = true; shake(380).then(() => { busy = false; dispense() }) }
+    if (acc >= 360) { drag = false; busy = true; aside.value = true; shake(380).then(() => { busy = false; dispense() }) }
   })
   el.addEventListener('pointerup', () => { if (!drag) return; drag = false; jiggle(0); if (!moved || acc < 12) turn() })
 }
@@ -226,6 +266,7 @@ async function turn() {
   if (busy || phase.value !== 'idle' || !D.list.length) return
   busy = true
   phase.value = 'busy'
+  aside.value = true
   setPhase('turn')
   const a0 = ang.value
   shake(900, 1)
@@ -242,7 +283,7 @@ async function turn() {
 async function dispense() {
   if (busy) return
   const id = D.list[0]
-  if (!id) { phase.value = 'idle'; return }
+  if (!id) { phase.value = 'idle'; aside.value = false; return }
   busy = true
   phase.value = 'busy'
   setPhase('drop')
@@ -280,36 +321,55 @@ async function dispense() {
   big = flycap(BR)
   drop.innerHTML = ''
   const p0 = { x: r.left + R0 - BR, y: r.top + R0 - BR }
-  const p1 = { x: cr.left + cr.width / 2 - BR, y: cr.top - 30 - BR }
+  const p1 = capSpot(cr)
+  capRot = (((-24 - cap.th) % 360) + 360) % 360
+  const spin = capRot < 180 ? capRot + 360 : capRot
   setPhase('fly')
-  await anim(big, arc(p0, p1, 80, 16, tt => `scale(${R0 / BR + (1 - R0 / BR) * tt}) rotate(${tt * 300}deg)`), { duration: 560, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
+  await anim(big, arc(p0, p1, 80, 16, tt => `scale(${R0 / BR + (1 - R0 / BR) * tt}) rotate(${tt * spin}deg)`), { duration: 620, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
   bigPos = p1
+  parkCap()
   setPhase('open')
   await openCap()
   phase.value = 'reveal'
   setPhase('reveal')
   busy = false
 }
+/** v0.4.1: the capsule rests on the card's top-right corner (opened) until the card is kept / put back. */
+const capSpot = (cr: DOMRect) => ({ x: cr.right - 22 - BR, y: cr.top + 2 - BR })
+/** Pin the resting capsule in place with a plain style transform (no running animation), e.g. after a resize. */
+function parkCap() {
+  if (!big) return
+  if (card.value && phase.value === 'reveal') bigPos = capSpot(card.value.getBoundingClientRect())
+  big.getAnimations().forEach(a => a.cancel())
+  big.style.transform = `translate(${bigPos.x}px,${bigPos.y}px) rotate(${capRot}deg)`
+}
 const capOff = () => { const a = (cap.th ?? -24) * Math.PI / 180; return [-Math.sin(a), Math.cos(a)] }
-const half = (k: number, r: number, op: number) => { const [nx, ny] = capOff(); return { transform: `translate(${nx * 24 * k}px,${ny * 24 * k}px) rotate(${r}deg)`, opacity: op } }
+/** Opened pose: the coloured top half lifts off like a lid (up-left, tilted); the white bottom half stays seated. */
+const OPEN_TOP = () => { const [nx, ny] = capOff(); return `translate(${(-nx * 13).toFixed(1)}px,${(-ny * 13).toFixed(1)}px) rotate(-26deg)` }
+const OPEN_BOT = () => { const [nx, ny] = capOff(); return `translate(${(nx * 2).toFixed(1)}px,${(ny * 2).toFixed(1)}px) rotate(6deg)` }
+function cardOrigin(c: HTMLElement) {
+  const r = c.getBoundingClientRect()
+  return `${(bigPos.x + BR - r.left).toFixed(0)}px ${(bigPos.y + BR - r.top).toFixed(0)}px`
+}
 async function openCap() {
   const c = card.value!
   if (big) {
-    anim(big.querySelector('.ctop')!, [{ transform: 'none', opacity: 1 }, { ...half(-1, -24, 1), offset: 0.55 }, half(-1.35, -34, 0)], { duration: 440, easing: 'cubic-bezier(.25,.8,.4,1)', fill: 'forwards' })
-    anim(big.querySelector('.cbot')!, [{ transform: 'none', opacity: 1 }, { ...half(1, 22, 1), offset: 0.55 }, half(1.35, 30, 0)], { duration: 440, easing: 'cubic-bezier(.25,.8,.4,1)', fill: 'forwards' })
+    anim(big.querySelector('.ctop')!, [{ transform: 'none' }, { transform: OPEN_TOP() }], { duration: 440, easing: 'cubic-bezier(.3,1.35,.5,1)', fill: 'forwards' })
+    anim(big.querySelector('.cbot')!, [{ transform: 'none' }, { transform: OPEN_BOT() }], { duration: 440, easing: 'cubic-bezier(.3,1.2,.5,1)', fill: 'forwards' })
     anim(big.querySelector('.cseam')!, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' })
   }
-  c.style.transformOrigin = '50% -30px'
-  await anim(c, [{ transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }, { transform: 'scale(1.03)', opacity: 1, borderRadius: '16px', offset: 0.72 }, { transform: 'scale(1)', opacity: 1, borderRadius: '16px' }], { duration: 440, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }).finished
+  c.style.transformOrigin = cardOrigin(c)
+  await anim(c, [{ transform: 'scale(.12)', opacity: 0, borderRadius: '50%' }, { transform: 'scale(1.03)', opacity: 1, borderRadius: '16px', offset: 0.72 }, { transform: 'scale(1)', opacity: 1, borderRadius: '16px' }], { duration: 460, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }).finished
 }
 async function closeCap() {
   const c = card.value
+  if (c) c.style.transformOrigin = cardOrigin(c)
   if (big) {
-    anim(big.querySelector('.ctop')!, [half(-1.35, -34, 0), { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
-    anim(big.querySelector('.cbot')!, [half(1.35, 30, 0), { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+    anim(big.querySelector('.ctop')!, [{ transform: OPEN_TOP() }, { transform: 'none' }], { duration: 280, delay: 120, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
+    anim(big.querySelector('.cbot')!, [{ transform: OPEN_BOT() }, { transform: 'none' }], { duration: 280, delay: 120, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' })
   }
-  if (c) await anim(c, [{ transform: 'scale(1)', opacity: 1, borderRadius: '16px' }, { transform: 'scale(.18)', opacity: 0, borderRadius: '50%' }], { duration: 240, easing: 'ease-in', fill: 'forwards' }).finished
-  if (big) await anim(big.querySelector('.cseam')!, [{ opacity: 0 }, { opacity: 1 }], { duration: 80, fill: 'forwards' }).finished
+  if (c) await anim(c, [{ transform: 'scale(1)', opacity: 1, borderRadius: '16px' }, { transform: 'scale(.12)', opacity: 0, borderRadius: '50%' }], { duration: 280, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }).finished
+  if (big) await anim(big.querySelector('.cseam')!, [{ opacity: 0 }, { opacity: 1 }], { duration: 120, fill: 'forwards' }).finished
 }
 function restorePile() { if (hiddenPc) { hiddenPc.getAnimations().forEach(a => a.cancel()); hiddenPc.style.opacity = '' } hiddenPc = null }
 
@@ -329,14 +389,14 @@ async function keep() {
   const my = m.d * mq[1] + m.f
   const sc = (GM.CR * 1.2247 * m.a) / BR
   setPhase('hop')
-  tween(200, (e) => { lid.innerHTML = CHEST.lid(C, 96 * e); if (glow) glow.style.opacity = String(e) }, easeOut)
+  tween(200, (e) => { CHEST.setLid(lid, C, 96 * e); if (glow) glow.style.opacity = String(e) }, easeOut)
   if (big) {
-    await anim(big, arc(bigPos, { x: mx - BR, y: my - BR - 4 }, 70, 14, tt => `scale(${1 + (sc - 1) * tt}) rotate(${tt * -280}deg)`, tt => (tt > 0.92 ? 0 : 1)), { duration: 520, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' }).finished
+    await anim(big, arc(bigPos, { x: mx - BR, y: my - BR - 4 }, 70, 14, tt => `scale(${1 + (sc - 1) * tt}) rotate(${capRot - tt * 280}deg)`, tt => (tt > 0.92 ? 0 : 1)), { duration: 520, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' }).finished
     big.remove()
     big = null
   }
-  await tween(260, (e) => { lid.innerHTML = CHEST.lid(C, 96 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOutBack)
-  lid.innerHTML = CHEST.lid(C, 0)
+  await tween(260, (e) => { CHEST.setLid(lid, C, 96 * (1 - e)); if (glow) glow.style.opacity = String(1 - e) }, easeOutBack)
+  CHEST.setLid(lid, C, 0)
   if (glow) glow.style.opacity = ''
   anim($('.chestg'), [{ transform: 'translateY(0)' }, { transform: 'translateY(.8px)' }, { transform: 'none' }], { duration: 200, easing: 'ease-out' })
   decide(it.id, 'like')
@@ -348,6 +408,7 @@ async function keep() {
   buildDeck()
   setPhase('')
   phase.value = 'idle'
+  aside.value = false
   busy = false
 }
 /** Put back: the capsule flies back to the top of the globe, the machine shakes once. */
@@ -360,7 +421,7 @@ async function back() {
   const top = scr(GM.CX, GM.CY, GM.CAPZ + 8)
   const sc = (GM.CR * 1.2247 * top.s) / BR
   if (big) {
-    await anim(big, arc(bigPos, { x: top.x - BR, y: top.y - BR }, 70, 16, tt => `scale(${1 + (sc - 1) * tt}) rotate(${-tt * 300}deg)`, tt => (tt > 0.9 ? 0 : 1)), { duration: 560, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
+    await anim(big, arc(bigPos, { x: top.x - BR, y: top.y - BR }, 70, 16, tt => `scale(${1 + (sc - 1) * tt}) rotate(${capRot - tt * 300}deg)`, tt => (tt > 0.9 ? 0 : 1)), { duration: 560, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished
     big.remove()
     big = null
   }
@@ -370,6 +431,7 @@ async function back() {
   cur.value = null
   toast(t('putBackMsg'), 'lucide:undo-2')
   phase.value = 'idle'
+  aside.value = false
   busy = false
 }
 
@@ -380,13 +442,16 @@ const dotOf = (it: Item) => it.k === 'set' ? '' : UICOL[it.v.split('/')[0]] || '
 onMounted(() => {
   svg = svgEl.value!
   svg.innerHTML = GM.scene({ chest: true })
+  layout()
+  ro = new ResizeObserver(() => layout())
+  ro.observe(stage.value!)
   bindKnob()
   swipeApi.space = turn
   swipeApi.keep = keep
   swipeApi.back = back
   pageFx.exit.swipe = exit
   pageFx.handoff.swipe = handoff
-  W.__gacha = { phase: '', flipT: 0, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
+  W.__gacha = { phase: '', flipT: 0, get moved() { return aside.value }, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
   if (!D.list.length) buildDeck()
   const flip = gachaFx.flip
   gachaFx.flip = null
@@ -404,12 +469,22 @@ onBeforeUnmount(() => {
   if (pageFx.exit.swipe === exit) pageFx.exit.swipe = null
   if (pageFx.handoff.swipe === handoff) pageFx.handoff.swipe = null
   document.querySelectorAll('.flipov').forEach(e => e.remove())
+  ro?.disconnect()
 })
 </script>
 
 <template>
   <div ref="root" class="anat g101 g11">
-    <div class="gstage"><svg ref="svgEl" class="ink gsvg" :viewBox="GM.VB.big.join(' ')" preserveAspectRatio="xMidYMid meet" /></div>
+    <div ref="stage" class="gstage" :class="{ moved: aside }">
+      <svg ref="svgEl" class="ink gsvg" viewBox="-104 -108 208 160" preserveAspectRatio="xMidYMid meet" />
+      <div class="gknob" :class="{ off: phase !== 'idle' || aside }" :style="{ left: `${lay.bx}px`, top: `${lay.by}px` }">
+        <button v-if="D.list.length" class="gbtn" :title="t('gName')" @click="turn"><span class="tgi" v-html="GLYPH_GACHA" />{{ t('pull') }}<kbd>Space</kbd></button>
+        <template v-else>
+          <button class="gbtn sec" :title="t('gEmpty')" @click="restart">{{ t('restart') }}</button>
+          <small class="gempty">{{ t('gEmpty') }}</small>
+        </template>
+      </div>
+    </div>
     <div class="rdout">
       <span>{{ t('stock') }} <b>{{ stats.stock }}</b> {{ t('mei') }}</span>
       <span>{{ t('gToday') }} <b>{{ stats.today }}</b></span>
@@ -417,16 +492,6 @@ onBeforeUnmount(() => {
       <span>{{ t('crank') }} <b>{{ angTxt }}</b></span>
     </div>
     <div class="corner bl" v-html="t('gHint')" />
-    <div class="gidle" :class="{ dim: phase !== 'idle' }">
-      <template v-if="D.list.length">
-        <h4>{{ t('gName') }}</h4>
-        <button class="btn pri go" @click="turn"><span class="tgi" v-html="GLYPH_GACHA" />{{ t('pull') }}<kbd>Space</kbd></button>
-      </template>
-      <template v-else>
-        <h4>{{ t('gEmpty') }}</h4>
-        <button class="btn sec go" @click="restart">{{ t('restart') }}</button>
-      </template>
-    </div>
     <div v-if="cur" ref="card" class="gcard" :class="{ show: phase === 'reveal' }">
       <span class="k">{{ kindK(cur) }}</span>
       <div class="h"><i v-if="dotOf(cur)" class="fdot" :style="{ background: dotOf(cur) }" /><b>{{ cur.k === 'set' ? (INFO[cur.v]?.name || cur.v) : cur.k === 'comp' ? ukl(cur.v.split('/')[1]) : UI(cur.v).name }}</b><small v-if="cur.k === 'comp'">{{ UI(cur.v.split('/')[0]).name }}</small></div>

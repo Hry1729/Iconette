@@ -78,7 +78,25 @@
 [data-theme="dark"] .ink .m-pcb,[data-theme="dark"] .ink .m-pct{stroke:#1d1b1f}
 
 /* ── 扭蛋页 ── */
-.g101.g11 .gstage{left:6px;top:0;width:min(470px,calc(100% - 270px));bottom:26px}
+.g101.g11 .gstage{left:0;top:0;right:0;width:auto;bottom:26px;transform-origin:var(--gox,50%) var(--goy,50%);transition:transform .72s cubic-bezier(.65,0,.35,1);will-change:transform}
+/* v0.4.1 · 扭一下时机器缩小并移到左侧，给右边的结果卡让位（只用 transform） */
+.g101.g11 .gstage.moved{transform:translateX(var(--gdx,0px)) scale(var(--gk,.8))}
+.g101.g11 .rdout,.g101.g11 .corner{z-index:2}
+/* v0.4.1 · 「扭一下」贴在旋钮右边：左侧小尖角指向旋钮；每隔几秒轻轻晃一下邀请点击 */
+.g11 .gknob{position:absolute;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:5px;margin-top:-18px;transition:opacity .22s ease,transform .22s ease}
+.g11 .gknob.off{opacity:0;transform:translateX(-6px) scale(.94);pointer-events:none}
+.g11 .gbtn{position:relative;height:36px;display:inline-flex;align-items:center;gap:7px;padding:0 13px 0 12px;border-radius:11px;border:0;background:var(--pick);color:var(--pickfg);font:600 13px var(--font);cursor:pointer;white-space:nowrap;transform-origin:0 50%;box-shadow:0 1px 0 rgba(0,0,0,.08),0 6px 16px -8px rgba(0,0,0,.35);animation:gwig 4.6s ease-in-out 1.8s infinite}
+.g11 .gbtn::before{content:'';position:absolute;left:-5px;top:50%;width:11px;height:11px;margin-top:-5.5px;background:inherit;border-radius:2px;transform:rotate(45deg)}
+.g11 .gbtn .tgi{width:15px;height:15px;display:grid;place-items:center}
+.g11 .gbtn kbd{font:500 10px var(--mono);opacity:.55;margin-left:2px;background:none;box-shadow:none;color:inherit;padding:0}
+.g11 .gbtn.sec{background:var(--card);color:var(--text);box-shadow:0 0 0 1px var(--line2),0 6px 16px -10px rgba(0,0,0,.3);animation:none}
+.g11 .gbtn.sec::before{box-shadow:-1px 1px 0 0 var(--line2)}
+.g11 .gbtn:hover{animation:none;transform:translateX(1px)}
+.g11 .gbtn:active{transform:translateX(1px) scale(.97)}
+.g11 .gempty{font-size:11px;color:var(--muted);padding-left:4px}
+@keyframes gwig{0%,78%,100%{transform:none}81%{transform:rotate(-5deg) translateX(1px)}84%{transform:rotate(4.5deg)}87%{transform:rotate(-3.5deg)}90%{transform:rotate(2.5deg)}93%{transform:rotate(-1deg)}96%{transform:none}}
+.g101.g11 .gcard{top:max(34px,calc(var(--gcy,200px) - 150px))}
+@media (prefers-reduced-motion: reduce){.g101.g11 .gstage{transition:none}.g11 .gbtn{animation:none}.g11 .gknob{transition:none}}
 .g11 .gsvg .knobg{cursor:grab}
 .g11 .gsvg .knobg:active{cursor:grabbing}
 .flycap .ink{display:block;width:100%;height:100%}
