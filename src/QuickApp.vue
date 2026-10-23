@@ -9,7 +9,7 @@ import { search } from './lib/iconify'
 import { zh2en } from './lib/zh'
 import { code, fmtLabel, pngBlob } from './lib/format'
 import { load } from './lib/iconify'
-import { copyPng, copyText, hideQuick, inTauri, isMac } from './lib/native'
+import { copyPng, copyText, hideQuick, inTauri, quickKey } from './lib/native'
 import { addRecent } from './lib/store'
 
 // 速取窗口: type, arrows to move, Enter copies in the current format and hides the window.
@@ -84,7 +84,7 @@ onMounted(async () => {
       <Logo data-tauri-drag-region />
       <span class="qs">
         <UiIcon name="lucide:search" />
-        <input ref="input" v-model="q" :placeholder="t('quickHint').replace('⌥', isMac ? '⌥' : 'Alt')" autocomplete="off" spellcheck="false" @keydown="onKey">
+        <input ref="input" v-model="q" :placeholder="quickKey ? t('quickHint').replace('⌥ Space', quickKey) : t('ph')" autocomplete="off" spellcheck="false" @keydown="onKey">
       </span>
     </label>
     <div class="qb">

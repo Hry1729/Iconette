@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 // Thin layer over Tauri APIs with browser fallbacks, so `pnpm dev` also works in a normal browser.
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 export const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent)
@@ -51,6 +52,11 @@ async function invoke<T = void>(cmd: string, args?: Record<string, unknown>): Pr
 export const toggleQuick = () => invoke('toggle_quick')
 export const hideQuick = async () => { if (inTauri) await invoke('quick_hide'); else window.close() }
 export const setCloseToTray = (on: boolean) => invoke('set_close_to_tray', { on })
+/** Display label of the quick-window shortcut that is really registered ('' when none could be).
+ *  Alt+Space may be taken by PowerToys / uTools / Copilot, then the app falls back to Alt+Shift+Space. */
+export const quickKey = ref(isMac ? '⌥ Space' : 'Alt Space')
+const keyLabel = (sc: string) => sc.split('+').map(p => p === 'alt' ? (isMac ? '⌥' : 'Alt') : p === 'shift' ? (isMac ? '⇧' : 'Shift') : p[0].toUpperCase() + p.slice(1)).join(isMac ? '' : ' ').replace(/(⌥|⇧)(?=[A-Z])/, '$1 ')
+if (inTauri) invoke<string | null>('quick_shortcut').then(sc => { quickKey.value = sc ? keyLabel(sc) : '' }).catch(() => {})
 export const setTrayLabels = (labels: string[]) => invoke('set_tray_labels', { labels })
 
 export async function autostartEnabled(): Promise<boolean> {

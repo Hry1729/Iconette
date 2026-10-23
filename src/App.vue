@@ -15,7 +15,7 @@ import { t } from './lib/i18n'
 import { ensureAll, loadInfo } from './lib/iconify'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
-import { autostartEnabled, inTauri, isMac, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
+import { autostartEnabled, inTauri, isMac, quickKey, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
 import { focusApi, swipeApi } from './lib/swipe'
 
 const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SwipeView)
@@ -136,7 +136,7 @@ onMounted(async () => {
       <hr>
       <button class="it" @click="S.lang = S.lang === 'zh' ? 'en' : 'zh'"><UiIcon name="lucide:languages" />{{ t('lang') }}<span class="r">{{ S.lang === 'zh' ? '中文' : 'English' }}</span></button>
       <button class="it" :class="{ on: S.click }" @click="S.click = !S.click"><UiIcon name="lucide:mouse-pointer-click" />{{ t('clickCopy') }}<span class="r ck">✓</span></button>
-      <button class="it" @click="openQuick"><UiIcon name="lucide:zap" />{{ t('quick') }}<span class="r">{{ isMac ? '⌥ Space' : 'Alt Space' }}</span></button>
+      <button class="it" @click="openQuick"><UiIcon name="lucide:zap" />{{ t('quick') }}<span v-if="quickKey" class="r">{{ quickKey }}</span></button>
       <template v-if="inTauri">
         <hr>
         <button class="it" :class="{ on: S.closeToTray }" @click="S.closeToTray = !S.closeToTray"><UiIcon name="lucide:app-window" />{{ t('closeTray') }}<span class="r ck">✓</span></button>
