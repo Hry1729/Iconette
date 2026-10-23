@@ -65,3 +65,15 @@ Object.assign(L.en, {
   chestSum: '<b>{n}</b> saved · icons <b>{a}</b> · sets <b>{b}</b> · libraries <b>{c}</b>', favd: 'Saved to your chest', likedSet: '{n} saved to your chest', mFav: 'Saved', chestTip: 'Idea chest',
   filterN: 'Filter', minimize: 'Minimize', maximize: 'Maximize', close: 'Close',
 })
+
+// v0.3 (v10 design): capsule case + gacha machine; trimmed titles.
+Object.assign(L.zh, {
+  chestT: '扭蛋收纳盒', chestTip: '扭蛋收纳盒', cFig: '扭蛋收纳盒', closeChest: '合上', openChest: '打开', prevLayer: '上一层 ←', nextLayer: '下一层 →',
+  favd: '已收进扭蛋收纳盒', likedSet: '{n} 已收进收纳盒', keptMsg: '{n} 已收进收纳盒', dChest: '我的收纳盒', movedOut: '已移出收纳盒', chestDeckNone: '收纳盒里还没有图标库或组件库',
+  gName: '扭蛋机', putBackMsg: '已放回机器', allHist: '全部 →', save: '收藏',
+})
+Object.assign(L.en, {
+  chestT: 'Capsule case', chestTip: 'Capsule case', cFig: 'Capsule case', closeChest: 'Close', openChest: 'Open', prevLayer: 'Previous layer ←', nextLayer: 'Next layer →',
+  favd: 'Saved to your capsule case', likedSet: '{n} saved', keptMsg: '{n} saved', dChest: 'My case', movedOut: 'Removed from case', chestDeckNone: 'No saved sets or libraries yet',
+  gName: 'Gacha', putBackMsg: 'Put back', allHist: 'All →', save: 'Save',
+})

@@ -1,207 +1,330 @@
 // @ts-nocheck
-// Isometric drawing kit, mini chest, tweens and the gacha machine SVG, ported from the v9 design board
-// (work/v9/iso.js + app.js + gacha.js). Four-tone shading, 0.6px lines, painter's order; colours come from CSS vars.
-/* ── isometric kit (Anatomy-inspired: four-tone shading, 0.6px lines, painter's order) ── */
+// v10 isometric kit (Anatomy style) · title-bar glyphs · the exploded gacha machine · the capsule case.
+// Ported from the approved design board (work/v10-2: iso.js, gacha.js, case.js). Colours come from CSS vars (styles/v10.css).
+/* ── v10 isometric kit · Anatomy 风格：等距 30°、四阶明暗、实体前后遮挡、细墨线、半透明面板、阴影排线、纸纹 ── */
 const ISO=(()=>{
-const K=Math.cos(Math.PI/6);let SFX='';const setSfx=v=>{SFX=v};
+const K=Math.cos(Math.PI/6);
+let S='';const setSfx=v=>{S=v};
 const P=(x,y,z)=>[(x-y)*K,(x+y)/2-z];
 const f=n=>Math.round(n*100)/100;
 const pt=p=>{const q=P(p[0],p[1],p[2]);return f(q[0])+','+f(q[1])};
 const pts=a=>a.map(pt).join(' ');
-const poly=(a,c,extra='')=>`<polygon class="${c}" points="${pts(a)}" ${extra}/>`;
+const poly=(a,c,ex='')=>`<polygon class="${c}" points="${pts(a)}" ${ex}/>`;
+const pline=(a,c,ex='')=>`<polyline class="${c}" points="${pts(a)}" ${ex}/>`;
+const seg=(a,b,c='d1')=>{const p=P(...a),q=P(...b);return `<line class="${c}" x1="${f(p[0])}" y1="${f(p[1])}" x2="${f(q[0])}" y2="${f(q[1])}"/>`};
+const dot=(p,r=.9,c='dt')=>{const q=P(...p);return `<circle class="${c}" cx="${f(q[0])}" cy="${f(q[1])}" r="${r}"/>`};
+/* plane matrices: local (u,v) → world.  mY: u=+x v=−z (plane y=const) · mX: u=−y v=−z (plane x=const) · mZ: u=+x v=+y (plane z=const) */
 const mX=(x,y,z)=>{const q=P(x,y,z);return `matrix(${f(K)},-0.5,0,1,${f(q[0])},${f(q[1])})`};
 const mY=(x,y,z)=>{const q=P(x,y,z);return `matrix(${f(K)},0.5,0,1,${f(q[0])},${f(q[1])})`};
 const mZ=(x,y,z)=>{const q=P(x,y,z);return `matrix(${f(K)},0.5,${f(-K)},0.5,${f(q[0])},${f(q[1])})`};
+/* box: tone '' paper · 'k' charcoal · 'r' red · 'g' glass.  o.hatch → 排线覆盖暗面 */
 function box(x,y,z,w,d,h,o={}){
-  const t=o.lit?['r3','r2','r1']:[o.top||'t3',o.fy||'t2',o.fx||'t1'];
+  const t=o.tone||'';
   const top=[[x,y,z+h],[x+w,y,z+h],[x+w,y+d,z+h],[x,y+d,z+h]];
-  const fx=[[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]];
-  const fy=[[x,y+d,z],[x+w,y+d,z],[x+w,y+d,z+h],[x,y+d,z+h]];
-  let s=poly(fy,t[1])+poly(fx,t[2])+poly(top,t[0]);
-  if(o.bevel){const b=o.bevel;s+=`<polygon class="lnf" points="${pts([[x+b,y+b,z+h],[x+w-b,y+b,z+h],[x+w-b,y+d-b,z+h],[x+b,y+d-b,z+h]])}"/>`}
+  const fr=[[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]];
+  const fl=[[x,y+d,z],[x+w,y+d,z],[x+w,y+d,z+h],[x,y+d,z+h]];
+  let s='';
+  if(!o.noL)s+=poly(fl,`fl ${t}`);
+  if(!o.noR){s+=poly(fr,`fr ${t}`);if(o.hatch)s+=poly(fr,'ht',`fill="url(#ht${S})"`)}
+  if(!o.noT)s+=poly(top,`tp ${t}`);
+  if(o.bevel){const b=o.bevel;s+=poly([[x+b,y+b,z+h],[x+w-b,y+b,z+h],[x+w-b,y+d-b,z+h],[x+b,y+d-b,z+h]],'d2 nf')}
+  if(o.screws){const b=o.screws;[[x+b,y+b],[x+w-b,y+b],[x+w-b,y+d-b],[x+b,y+d-b]].forEach(([a,c])=>{s+=dot([a,c,z+h],.75)})}
   return s;
 }
-/* sloped slab: z varies linearly along x */
-function slope(x0,x1,y,d,z0,z1,h,o={}){
-  const top=[[x0,y,z0+h],[x1,y,z1+h],[x1,y+d,z1+h],[x0,y+d,z0+h]];
-  const fy=[[x0,y+d,z0],[x1,y+d,z1],[x1,y+d,z1+h],[x0,y+d,z0+h]];
-  const fx=[[x1,y,z1],[x1,y+d,z1],[x1,y+d,z1+h],[x1,y,z1+h]];
-  return poly(fy,o.fy||'t2')+poly(fx,'t1')+poly(top,o.top||'t3');
+/* glass panel in a plane, as a thin slab outline with sheen strokes */
+function glassY(x0,x1,y,z0,z1,o={}){ /* plane y=const */
+  const q=[[x0,y,z0],[x1,y,z0],[x1,y,z1],[x0,y,z1]];
+  let s=poly(q,'gl');const w=x1-x0,h=z1-z0;
+  if(!o.plain){s+=seg([x0+w*.18,y,z1-h*.12],[x0+w*.42,y,z1-h*.62],'sh');s+=seg([x0+w*.27,y,z1-h*.12],[x0+w*.46,y,z1-h*.5],'sh')}
+  s+=poly([[x0+1.6,y,z0+1.6],[x1-1.6,y,z0+1.6],[x1-1.6,y,z1-1.6],[x0+1.6,y,z1-1.6]],'d2 nf');
+  return s;
+}
+function glassX(x,y0,y1,z0,z1,o={}){ /* plane x=const */
+  const q=[[x,y0,z0],[x,y1,z0],[x,y1,z1],[x,y0,z1]];
+  let s=poly(q,'gl');const w=y1-y0,h=z1-z0;
+  if(!o.plain){s+=seg([x,y0+w*.2,z1-h*.12],[x,y0+w*.44,z1-h*.6],'sh');s+=seg([x,y0+w*.3,z1-h*.12],[x,y0+w*.48,z1-h*.48],'sh')}
+  s+=poly([[x,y0+1.6,z0+1.6],[x,y1-1.6,z0+1.6],[x,y1-1.6,z1-1.6],[x,y0+1.6,z1-1.6]],'d2 nf');
+  return s;
 }
 function ell(cx,cy,z,r){const q=P(cx,cy,z);return {X:q[0],Y:q[1],rx:r*1.2247,ry:r*.7071}}
-function cyl(cx,cy,z,r,h,o={}){
+/* vertical cylinder with smooth shading */
+function cyl(cx,cy,z,r,h,tone=''){
   const b=ell(cx,cy,z,r),t=ell(cx,cy,z+h,r);
-  const g=o.grad||`url(#cg${SFX})`;
-  let s=`<path class="f" fill="${o.lit?`url(#cgr${SFX})`:g}" d="M${f(b.X-b.rx)},${f(b.Y)} A${f(b.rx)},${f(b.ry)} 0 0 0 ${f(b.X+b.rx)},${f(b.Y)} L${f(t.X+t.rx)},${f(t.Y)} A${f(t.rx)},${f(t.ry)} 0 0 1 ${f(t.X-t.rx)},${f(t.Y)} Z"/>`;
-  s+=`<ellipse class="f ${o.lit?'r3':(o.top||'t3')}" cx="${f(t.X)}" cy="${f(t.Y)}" rx="${f(t.rx)}" ry="${f(t.ry)}"/>`;
-  if(o.ring){s+=`<ellipse class="lnf" cx="${f(t.X)}" cy="${f(t.Y)}" rx="${f(t.rx*o.ring)}" ry="${f(t.ry*o.ring)}"/>`}
-  return s;
+  const g=tone==='r'?`url(#cgr${S})`:tone==='k'?`url(#cgk${S})`:`url(#cg${S})`;
+  return `<path class="cy" fill="${g}" d="M${f(b.X-b.rx)},${f(b.Y)} A${f(b.rx)},${f(b.ry)} 0 0 0 ${f(b.X+b.rx)},${f(b.Y)} L${f(t.X+t.rx)},${f(t.Y)} A${f(t.rx)},${f(t.ry)} 0 0 1 ${f(t.X-t.rx)},${f(t.Y)} Z"/>`+
+    `<ellipse class="tp ${tone}" cx="${f(t.X)}" cy="${f(t.Y)}" rx="${f(t.rx)}" ry="${f(t.ry)}"/>`;
 }
-function defs(){return `<defs>
-<linearGradient id="cg${SFX}" x1="0" x2="1"><stop offset="0" style="stop-color:var(--s2)"/><stop offset=".35" style="stop-color:var(--s3)"/><stop offset=".7" style="stop-color:var(--s1)"/><stop offset="1" style="stop-color:var(--s0)"/></linearGradient>
-<linearGradient id="cgr${SFX}" x1="0" x2="1"><stop offset="0" stop-color="#e5484d"/><stop offset=".35" stop-color="#f07a7e"/><stop offset=".7" stop-color="#c93a3f"/><stop offset="1" stop-color="#a52e33"/></linearGradient>
-<radialGradient id="glassg${SFX}" cx=".38" cy=".32" r=".75"><stop offset="0" style="stop-color:var(--s3);stop-opacity:.55"/><stop offset=".7" style="stop-color:var(--s2);stop-opacity:.2"/><stop offset="1" style="stop-color:var(--s0);stop-opacity:.45"/></radialGradient>
-<radialGradient id="capg${SFX}" cx=".35" cy=".3" r=".8"><stop offset="0" style="stop-color:var(--s3)"/><stop offset="1" style="stop-color:var(--s1)"/></radialGradient>
-</defs>`}
+function halo(cx,cy,z,r,sc=1){const e=ell(cx,cy,z,r);return `<ellipse class="halo" cx="${f(e.X)}" cy="${f(e.Y+3)}" rx="${f(e.rx*sc)}" ry="${f(e.ry*sc)}"/>`}
+function haloRect(x,y,z,w,d){return `<polygon class="halo" points="${pts([[x-3,y-3,z],[x+w+6,y-3,z],[x+w+6,y+d+6,z],[x-3,y+d+6,z]])}"/>`}
 function gearPath(r,n,dp){let d='';for(let i=0;i<n;i++){const a=i/n*Math.PI*2,s=Math.PI*2/n;
-  const pts=[[r-dp,a-s*.5],[r-dp,a-s*.22],[r,a-s*.14],[r,a+s*.14],[r-dp,a+s*.22]];
-  pts.forEach(([rr,aa],j)=>{d+=(i==0&&j==0?'M':'L')+f(Math.cos(aa)*rr)+','+f(Math.sin(aa)*rr)})}
+  const q=[[r-dp,a-s*.5],[r-dp,a-s*.24],[r,a-s*.14],[r,a+s*.14],[r-dp,a+s*.24]];
+  q.forEach(([rr,aa],j)=>{d+=(i==0&&j==0?'M':'L')+f(Math.cos(aa)*rr)+','+f(Math.sin(aa)*rr)})}
   return d+'Z'}
-/* capsule in screen space */
-function capsule(r,tone,id){
-  const top=tone=='red'?'r2':tone;
-  return `<g ${id?`id="${id}"`:''} class="capsule"><g class="cb"><path class="f t3" d="M${-r},0 A${r},${r} 0 0 0 ${r},0 Z"/></g>
-  <g class="ct"><path class="f ${top}" d="M${-r},0 A${r},${r} 0 0 1 ${r},0 Z"/><path class="shine" style="stroke-width:${Math.max(1,r*.18)}" d="M${f(-r*.55)},${f(-r*.45)} A${f(r*.75)},${f(r*.75)} 0 0 1 ${f(-r*.05)},${f(-r*.78)}"/></g>
-  <line class="lnm" x1="${-r}" y1="0" x2="${r}" y2="0"/></g>`}
-/* chest: body + lid at angle a (deg) */
-function rotLid(p,y0,zh,a){const c=Math.cos(a),s=Math.sin(a),dy=p[1]-y0,dz=p[2]-zh;return [p[0],y0+dy*c-dz*s,zh+dy*s+dz*c]}
-const V=[1,1,1];
-function nrm(a,b,c){const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];return [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]}
-function lidSVG(c,deg,mini){
-  const {x,y,z,w,d,h,lh}=c,zh=z+h,a=deg*Math.PI/180;
-  const R=p=>rotLid(p,y,zh,a);
-  const v=[[x,y,zh],[x+w,y,zh],[x+w,y+d,zh],[x,y+d,zh],[x,y,zh+lh],[x+w,y,zh+lh],[x+w,y+d,zh+lh],[x,y+d,zh+lh]].map(R);
-  const F=[{i:[4,5,6,7],t:'t3'},{i:[3,2,1,0],t:'t0',inner:1},{i:[3,7,6,2],t:'t2',front:1},{i:[1,2,6,5],t:'t1'},{i:[0,1,5,4],t:'t2'},{i:[0,4,7,3],t:'t1'}];
-  const vis=F.filter(F=>{const n=nrm(v[F.i[0]],v[F.i[1]],v[F.i[2]]);return n[0]*V[0]+n[1]*V[1]+n[2]*V[2]>0.01});
-  let s='';
-  vis.sort((A,B)=>{const ca=A.i.reduce((s,k)=>s+v[k][0]+v[k][1]+v[k][2],0),cb=B.i.reduce((s,k)=>s+v[k][0]+v[k][1]+v[k][2],0);return ca-cb});
-  vis.forEach(F=>{s+=poly(F.i.map(k=>v[k]),F.inner?'cav2':F.t);
-    if(F.front){const hx=x+w/2,q=[[hx-5,y+d,zh+1],[hx+5,y+d,zh+1],[hx+5,y+d,zh+lh-1.5],[hx-5,y+d,zh+lh-1.5]].map(R);s+=poly(q,'r2')}
-    if(F.t=='t3'&&!F.inner&&!mini){const q=[[x+3,y+3,zh+lh],[x+w-3,y+3,zh+lh],[x+w-3,y+d-3,zh+lh],[x+3,y+d-3,zh+lh]].map(R);s+=`<polygon class="lnf" points="${pts(q)}"/>`;
-      [[x+w*.22],[x+w*.78]].forEach(([sx])=>{const q2=[[sx-2.5,y,zh+lh],[sx+2.5,y,zh+lh],[sx+2.5,y+d,zh+lh],[sx-2.5,y+d,zh+lh]].map(R);s+=poly(q2,'t1')})}
-  });
-  return s;
-}
-function chestBody(c,id){
-  const {x,y,z,w,d,h}=c,t=Math.max(2,w*.05),zt=z+h;
-  let s='';
-  s+=poly([[x,y+d,z],[x+w,y+d,z],[x+w,y+d,zt],[x,y+d,zt]],'t2');
-  s+=poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,zt],[x+w,y,zt]],'t1');
-  s+=poly([[x,y,zt],[x+w,y,zt],[x+w,y+d,zt],[x,y+d,zt]],'t3');
-  const inner=[[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+d-t,zt],[x+t,y+d-t,zt]];
-  s+=`<clipPath id="${id}cv"><polygon points="${pts(inner)}"/></clipPath>`;
-  s+=poly(inner,'cav');
-  s+=`<g clip-path="url(#${id}cv)">${poly([[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+t,zt-h*.55],[x+t,y+t,zt-h*.55]],'cav2','style="stroke:none"')}${poly([[x+t,y+t,zt],[x+t,y+d-t,zt],[x+t,y+d-t,zt-h*.55],[x+t,y+t,zt-h*.55]],'cav2','style="stroke:none;opacity:.6"')}</g>`;
-  s+=`<polygon class="ln" style="fill:none" points="${pts(inner)}"/>`;
-  return s;
-}
-function chestFront(c,mini){
-  const {x,y,z,w,d,h}=c,zt=z+h;let s='';
-  s+=poly([[x,y+d,z],[x+w,y+d,z],[x+w,y+d,zt],[x,y+d,zt]],'t2');
-  s+=poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,zt],[x+w,y,zt]],'t1');
-  if(mini){const hx=x+w/2;return s+poly([[hx-2.2,y+d,zt-h*.5],[hx+2.2,y+d,zt-h*.5],[hx+2.2,y+d,zt],[hx-2.2,y+d,zt]],'r2')}
-  [x+w*.22,x+w*.78].forEach(sx=>{s+=poly([[sx-2.5,y+d,z],[sx+2.5,y+d,z],[sx+2.5,y+d,zt],[sx-2.5,y+d,zt]],'t1')});
-  [y+d*.25,y+d*.75].forEach(sy=>{s+=poly([[x+w,sy-2.5,z],[x+w,sy+2.5,z],[x+w,sy+2.5,zt],[x+w,sy-2.5,zt]],'t0')});
-  const hx=x+w/2;
-  s+=poly([[hx-4,y+d,zt-h*.42],[hx+4,y+d,zt-h*.42],[hx+4,y+d,zt],[hx-4,y+d,zt]],'r1');
-  const k=P(hx,y+d,zt-h*.22);s+=`<circle cx="${f(k[0])}" cy="${f(k[1])}" r="${f(Math.max(.7,w*.012))}" fill="#5a1a1d"/>`;
-  s+=`<polyline class="lnf" points="${pts([[x,y+d,z+h*.18],[x+w,y+d,z+h*.18],[x+w,y,z+h*.18]])}"/>`;
-  return s;
-}
-function halo(cx,cy,z,r,sc=1){const e=ell(cx,cy,z,r);return `<ellipse class="halo" cx="${f(e.X)}" cy="${f(e.Y+2)}" rx="${f(e.rx*sc)}" ry="${f(e.ry*sc)}"/>`}
-return {setSfx,get sfx(){return SFX},K,P,f,pt,pts,poly,mX,mY,mZ,box,slope,cyl,ell,defs,gearPath,capsule,lidSVG,chestBody,chestFront,halo};
+/* 2D capsule (screen space). top: 'w' white · 'm' grey · 'k' charcoal · 'r' red. tag: css colour for the small library band */
+function capsule(r,top='m',tag='',cls=''){
+  const sw=Math.max(.6,r*.07);
+  return `<g class="cap ${cls}"><g class="cbot"><path class="cpb" d="M${-r},0 A${r},${r} 0 0 0 ${r},0 Z"/></g>`+
+  `<g class="ctop"><path class="cpt ${top[0]==='#'?'':top}" ${top[0]==='#'?`style="fill:${top}"`:''} d="M${-r},0 A${r},${r} 0 0 1 ${r},0 Z"/>`+
+  (tag?`<path d="M${f(-r*.62)},${f(-r*.08)} A${f(r)},${f(r)} 0 0 1 ${f(-r*.3)},${f(-r*.86)}" style="stroke:${tag};stroke-width:${f(r*.22)};fill:none;stroke-linecap:round"/>`:'')+
+  `<path class="csh" style="stroke-width:${f(r*.14)}" d="M${f(r*.18)},${f(-r*.72)} A${f(r*.74)},${f(r*.74)} 0 0 1 ${f(r*.62)},${f(-r*.32)}"/></g>`+
+  `<line class="cseam" x1="${-r}" y1="0" x2="${r}" y2="0" style="stroke-width:${f(sw)}"/></g>`}
+function defs(){return `<defs>
+<linearGradient id="cg${S}" x1="0" x2="1"><stop offset="0" style="stop-color:var(--i-s2)"/><stop offset=".38" style="stop-color:var(--i-top)"/><stop offset=".72" style="stop-color:var(--i-s1)"/><stop offset="1" style="stop-color:var(--i-s0)"/></linearGradient>
+<linearGradient id="cgk${S}" x1="0" x2="1"><stop offset="0" style="stop-color:var(--k-s2)"/><stop offset=".38" style="stop-color:var(--k-top)"/><stop offset="1" style="stop-color:var(--k-s0)"/></linearGradient>
+<linearGradient id="cgr${S}" x1="0" x2="1"><stop offset="0" stop-color="#e5484d"/><stop offset=".35" stop-color="#f27d81"/><stop offset=".72" stop-color="#cf3d42"/><stop offset="1" stop-color="#a92f34"/></linearGradient>
+<pattern id="ht${S}" patternUnits="userSpaceOnUse" width="2.6" height="2.6" patternTransform="rotate(58)"><line x1="0" y1="0" x2="0" y2="2.6" style="stroke:var(--i-hatch);stroke-width:.55"/></pattern>
+<pattern id="htf${S}" patternUnits="userSpaceOnUse" width="3.4" height="3.4" patternTransform="rotate(-32)"><line x1="0" y1="0" x2="0" y2="3.4" style="stroke:var(--i-hatch);stroke-width:.45"/></pattern>
+</defs>`}
+return {setSfx,get sfx(){return S},K,P,f,pt,pts,poly,pline,seg,dot,mX,mY,mZ,box,glassY,glassX,cyl,ell,halo,haloRect,gearPath,capsule,defs};
 })();
 
-/* ── mini chest for title bar ── */
-const MINI={x:0,y:0,z:0,w:22,d:15,h:10,lh:5};
-function miniChestSVG(deg=0){
-  const c=MINI;
-  return `<svg class="mchest iso" viewBox="-14 -19.5 34 38">${ISO.chestBody(c,'mc'+Math.random().toString(36).slice(2,6))}${ISO.chestFront(c,1)}<g class="lid">${ISO.lidSVG(c,deg,1)}</g></svg>`;
-}
-let FROZEN=false;
-// Test hooks: freeze()/unfreeze() pause every tween and CSS animation (used for screenshots).
-window.freeze=()=>{FROZEN=true;document.getAnimations().forEach(a=>a.pause())};window.unfreeze=()=>{FROZEN=false;document.getAnimations().forEach(a=>{if(a.playState==='paused')a.play()})};
-function tween(dur,fn,ease=t=>1-Math.pow(1-t,3)){return new Promise(r=>{let el=0,last=performance.now();const step=n=>{if(!FROZEN)el+=n-last;last=n;const t=Math.min(1,el/dur);fn(ease(t),t);t<1?requestAnimationFrame(step):r()};requestAnimationFrame(step)})}
+/* ── motion helpers ── */
+let FROZEN=false;window.freeze=()=>{FROZEN=true;document.getAnimations().forEach(a=>a.pause())};window.unfreeze=()=>{FROZEN=false;document.getAnimations().forEach(a=>{if(a.playState==='paused')a.play()})};
+const RM=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+function tween(dur,fn,ease=t=>1-Math.pow(1-t,3)){dur*=(window.SLOW||1);if(RM())dur=Math.min(dur,1);return new Promise(r=>{let el=0,last=performance.now();const step=n=>{if(!FROZEN)el+=n-last;last=n;const t=dur<=1?1:Math.min(1,el/dur);fn(ease(t),t);t<1?requestAnimationFrame(step):r()};requestAnimationFrame(step)})}
 const easeIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
-const easeOutBack=t=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2)};
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function wiggleChest(svg,big){ /* lid bounce: open a bit, close with bounce */
-  if(!svg)return;const g=svg.querySelector('.lid');if(!g)return;
-  const c=big||MINI,mini=!big;
-  return tween(680,(e,t)=>{const a=Math.sin(t*Math.PI)*42*(1-t*.3)+Math.sin(t*Math.PI*3)*7*(1-t);g.innerHTML=ISO.lidSVG(c,Math.max(0,a),mini)},t=>t).then(()=>{g.innerHTML=ISO.lidSVG(c,0,mini)});
+const easeOut=t=>1-Math.pow(1-t,3);
+const easeOutBack=t=>{const c1=1.5,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2)};
+const clamp01=v=>v<0?0:v>1?1:v;
+const sleep=ms=>new Promise(r=>{ms*=(window.SLOW||1);if(RM())ms=Math.min(ms,30);let el=0,last=performance.now();const s=n=>{if(!FROZEN)el+=n-last;last=n;el>=ms?r():requestAnimationFrame(s)};requestAnimationFrame(s)});
+/* WAAPI with reduced-motion fallback */
+function anim(el,kf,o){o=Object.assign({},o);const k=window.SLOW||1;o.duration=(o.duration||0)*k;if(o.delay)o.delay*=k;if(RM()){o.duration=1;o.delay=0}return el.animate(kf,o)}
+
+
+let GLYPH_GACHA='',GLYPH_CASE='';
+/* ── v10.2 · 标题栏小图标：回到 v9 粗描边等距小模型（白面 + 深色粗描边 + 一处红色）── */
+const GLYPH3=(()=>{const K=Math.cos(Math.PI/6);
+  const mk=(s,ox,oy)=>{const P=(x,y,z)=>[(x-y)*K*s+ox,(x+y)/2*s-z*s+oy];const f=n=>Math.round(n*100)/100;
+    const pp=a=>a.map(p=>{const q=P(...p);return f(q[0])+','+f(q[1])}).join(' ');
+    const poly=(a,c)=>`<polygon class="${c}" points="${pp(a)}"/>`;
+    const pl=(a,c='ln')=>`<polyline class="${c}" points="${pp(a)}"/>`;
+    /* 只画看得见的三面：左前(y=d) · 右(x=w) · 顶 */
+    const box=(x,y,z,w,d,h,t='')=>poly([[x,y+d,z],[x+w,y+d,z],[x+w,y+d,z+h],[x,y+d,z+h]],'fl '+t)+poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]],'fr '+t)+poly([[x,y,z+h],[x+w,y,z+h],[x+w,y+d,z+h],[x,y+d,z+h]],'tp '+t);
+    const circ=(x,y,z,r,c)=>{const q=P(x,y,z);return `<circle class="${c}" cx="${f(q[0])}" cy="${f(q[1])}" r="${r}"/>`};
+    /* 贴在左前面(y=const)上的椭圆：用矩阵把单位圆斜切到等距平面 */
+    const onFL=(x,y,z,r,c)=>{const q=P(x,y,z);return `<ellipse class="${c}" cx="0" cy="0" rx="${r}" ry="${r}" transform="matrix(${f(K*s)},${f(.5*s)},0,${f(s)},${f(q[0])},${f(q[1])})"/>`};
+    return {P,poly,pl,box,circ,onFL,pp}};
+  /* 迷你扭蛋机：白机身 + 透明玻璃仓（一枚空心胶囊）+ 顶盖 · 红色旋钮 */
+  const g=mk(1.12,12,12.2),W=8.4;
+  let a='';
+  a+=g.box(0,0,0,W,W,4.8);
+  a+=g.onFL(3.1,W,2.5,1.75,'red');
+  a+=g.pl([[6,W,1.3],[7.4,W,1.3]],'ln thin');
+  a+=g.circ(4.6,4.6,7.4,1.9,'cap');
+  a+=g.poly([[0,W,4.8],[W,W,4.8],[W,W,10.6],[0,W,10.6]],'glass')+g.poly([[W,0,4.8],[W,W,4.8],[W,W,10.6],[W,0,10.6]],'glass');
+  a+=g.box(-.4,-.4,10.6,W+.8,W+.8,1.7,'lid');
+  const gacha=`<svg class="gly g9" viewBox="0 0 24 24">${a}</svg>`;
+  /* 迷你收纳盒：矮宽的盒子 · 一道盒盖缝 + 一道托盘缝 · 红色搭扣 */
+  const c=mk(1.06,12,12.6),B=11;
+  let b='';
+  b+=c.box(0,0,0,B,B,5);
+  b+=`<g class="glid">${c.box(0,0,5,B,B,2.6,'lid')}</g>`;
+  b+=`<polygon class="glatch red" points="${c.pp([[4,B,3],[7,B,3],[7,B,7.6],[4,B,7.6]])}"/>`;
+  const box=`<svg class="gly g9 gcase" viewBox="0 0 24 24">${b}</svg>`;
+  return {gacha,box};
+})();
+GLYPH_GACHA=GLYPH3.gacha;GLYPH_CASE=GLYPH3.box;
+
+const TAGC=['#e5484d','#3e63dd','#30a46c','#f5a524','#8e4ec6','#12a594','#d6409f','#0090ff','#a18072'];
+const CAPC=['r','o','b','g','p','w','t','r','b','o','w','g'];
+const LAYC=['#e5484d','#3e63dd','#30a46c','#f5a524','#8e4ec6','#12a594'];
+const CASE=(()=>{
+const {P,f,poly,box,glassX,glassY,cyl,seg,dot,mX,mY,mZ,capsule}=ISO;
+function geo(C){const caseTop=C.base+C.N*C.th;return {caseTop,home:j=>C.base+(C.N-j)*C.th,stashDX:C.W+(C.mini?8:16)}}
+function pocketXY(C,j,i,dx=0){const rows=(C.K||9)/3,c=i%3,r=Math.floor(i/3),s=(C.W-6)/3,sy=(C.W-6)/rows;return [C.x0+dx+3+s*(c+.5),C.y0+3+sy*(r+.5)]}
+function trayG(C,j,dx,z,caps,show,act){
+  const W=C.W,x=C.x0+dx+3,y=C.y0+3,w=W-6,h=C.th-2,zt=z+h;
+  let s=`<g class="tray ${act?'act':''}" data-t="${j}">`;
+  s+=box(x,y,z,w,w,h,{hatch:!C.mini});
+  s+=poly([[x+1.6,y+1.6,zt],[x+w-1.6,y+1.6,zt],[x+w-1.6,y+w-1.6,zt],[x+1.6,y+w-1.6,zt]],'d2 nf');
+  if(!C.mini){ /* 前沿小铭牌：层号 */
+    s+=`<g transform="${mY(x+w*.5-5,y+w,zt-2.2)}"><rect class="k-plate" style="fill:${LAYC[(j-1)%LAYC.length]}" x="0" y="0" width="10" height="${h-5}" rx=".8"/></g>`;
+    s+=seg([x,y+w,z+2.2],[x+w,y+w,z+2.2],'d2');s+=seg([x+w,y,z+2.2],[x+w,y+w,z+2.2],'d2');
+  }
+  const pr=(w/3)*(C.K===6?.36:.33),order=[...Array(C.K||9).keys()].sort((a,b)=>(a%3+Math.floor(a/3))-(b%3+Math.floor(b/3)));
+  order.forEach(i=>{const [px,py]=pocketXY(C,j,i,dx);const e=ISO.ell(px,py,zt,pr);
+    s+=`<ellipse class="pk" cx="${f(e.X)}" cy="${f(e.Y)}" rx="${f(e.rx)}" ry="${f(e.ry)}"/>`;
+    s+=`<path class="d2" d="M${f(e.X-e.rx*.8)},${f(e.Y+e.ry*.15)} A${f(e.rx*.8)},${f(e.ry*.8)} 0 0 0 ${f(e.X+e.rx*.8)},${f(e.Y+e.ry*.15)}"/>`;
+    const cp=caps&&caps[i];
+    if(cp&&show&&show[i]){const cr=pr*1.02;s+=`<g class="cpk" data-pk="${j}-${i}" transform="translate(${f(e.X)},${f(e.Y-cr*.52)}) rotate(${cp.rot||-18})">${capsule(cr,cp.top,cp.tag)}</g>`}
+  });
+  return s+'</g>';
 }
-/* ───────── 图标扭蛋机 (isometric, Anatomy-style) ───────── */
-const G={GC:[60,60,156],GR:44,CR:9,CHEST:{x:186,y:74,z:0,w:66,d:50,h:22,lh:7},CRANK:[58,30],DOOR:[36,80,36,58]};
-function rand(seed){let s=seed;return()=>{s=(s*16807)%2147483647;return (s-1)/2147483646}}
-function gachaSVG(sfx){
-  ISO.setSfx(sfx);const {box,cyl,poly,pts,P,f,mX,mY,ell,slope}=ISO;
-  let s=`<svg class="isosvg iso" viewBox="-160 -198 340 398" preserveAspectRatio="xMidYMid meet">${ISO.defs()}`;
-  s+=ISO.halo(60,60,0,96)+ISO.halo(219,99,0,48)+ISO.halo(150,126,0,10);
+function lidG(C,dx,z,latch){
+  const W=C.W,x=C.x0+dx-1.5,y=C.y0-1.5,w=W+3,h=C.lidH;
+  let s=`<g class="lid">`+box(x,y,z,w,w,h,{tone:'k',bevel:C.mini?1.6:3.2,screws:C.mini?0:2})+`</g>`;
+  if(!C.mini){s+=`<g transform="${mZ(x+w-24,y+8,z+h)}"><rect class="k-badge" x="0" y="0" width="14" height="14" rx="3.4"/><rect x="5.6" y="6.2" width="2.8" height="5.4" rx="1.4" class="lgi"/><path d="M4.4 4.8 7 2.8 9.6 4.8" class="lgc"/></g>`}
+  /* 红色搭扣：latch 0 = 扣上（向下挂）· 1 = 翻起 */
+  const lw=C.mini?3.4:7,lh=(C.mini?4:8)*Math.cos(Math.PI*latch),xc=C.x0+dx+W/2-lw/2;
+  s+=`<g transform="${mY(xc,y+w+.05,z+ (C.mini?0:1))}"><path class="latch" d="M0,0 L${lw},0 L${lw},${f(lh)} L0,${f(lh)} Z"/>${C.mini?'':`<circle class="lnub" cx="${lw/2}" cy="${f(lh*.62)}" r="1"/>`}</g>`;
+  return s;
+}
+/* L: {lid:{dx,z}, trays:{j:{dx,z}}, latch, active, caps, show} */
+function svg(C,L,o={}){
+  const G=geo(C),W=C.W,x0=C.x0,y0=C.y0,ct=G.caseTop;
+  let s='';
+  s+=`<polygon class="halo" points="${ISO.pts([[x0-4,y0-4,0],[x0+W+5,y0-4,0],[x0+W+5,y0+W+6,0],[x0-4,y0+W+6,0]])}"/>`;
+  /* stash shadow */
+  const anyStash=Object.values(L.trays).some(t=>t.dx>W*.6)||L.lid.dx>W*.6;
+  if(anyStash){const dx=G.stashDX;s+=`<polygon class="halo" points="${ISO.pts([[x0+dx-3,y0-3,0],[x0+dx+W+4,y0-3,0],[x0+dx+W+4,y0+W+5,0],[x0+dx-3,y0+W+5,0]])}"/>`;
+}
   /* feet + plinth */
-  [[0,0],[120,0],[0,120],[120,120]].sort((a,b)=>a[0]+a[1]-b[0]-b[1]).forEach(([x,y])=>{s+=cyl(x,y,0,6,4)});
-  s+=box(-12,-12,4,144,144,10,{bevel:5});
-  [[-5,-5],[125,-5],[-5,125],[125,125]].forEach(([x,y])=>{const q=P(x,y,14);s+=`<circle class="dot" cx="${f(q[0])}" cy="${f(q[1])}" r=".9"/>`});
-  /* body */
-  s+=box(0,0,14,120,120,100);
-  s+=`<polyline class="lnf" points="${pts([[0,120,104],[120,120,104],[120,0,104]])}"/><polyline class="lnf" points="${pts([[0,120,24],[120,120,24],[120,0,24]])}"/>`;
-  /* side window with gears (+x face) */
-  s+=`<g transform="${mX(120,120,114)}"><rect class="f cav2" x="16" y="16" width="88" height="66" rx="4"/>
-     <g id="${sfx}g1" data-c="44,48"><path class="f t2" d="${ISO.gearPath(22,16,3.4)}" transform="translate(44,48)"/><circle class="f t3" cx="44" cy="48" r="9"/>${[0,1,2,3,4].map(i=>{const a=i/5*Math.PI*2;return `<circle class="f cav" cx="${f(44+Math.cos(a)*15)}" cy="${f(48+Math.sin(a)*15)}" r="2.6"/>`}).join('')}<circle class="dot" cx="44" cy="48" r="1.6"/></g>
-     <g id="${sfx}g2" data-c="73,66"><path class="f t1" d="${ISO.gearPath(13,10,3)}" transform="translate(73,66)"/><circle class="f t3" cx="73" cy="66" r="4.5"/><circle class="dot" cx="73" cy="66" r="1.2"/></g>
-     <g id="${sfx}g3" data-c="86,32"><path class="f t2" d="${ISO.gearPath(9,8,2.6)}" transform="translate(86,32)"/><circle class="dot" cx="86" cy="32" r="1.1"/></g>
-     <rect x="16" y="16" width="88" height="66" rx="4" class="ln"/>
-     ${[0,1,2,3].map(i=>`<rect class="lnf" x="${24+i*20}" y="88" width="12" height="3" rx="1.5"/>`).join('')}</g>`;
-  /* front face (+y) */
-  const [d0,d1,z0,z1]=G.DOOR;
-  s+=`<g transform="${mY(0,120,114)}"><rect class="lnf" x="7" y="6" width="106" height="88" rx="5" fill="none"/>
-     <rect class="f cav" x="${d0}" y="${114-z1}" width="${d1-d0}" height="${z1-z0}" rx="3"/>
-     <rect class="f t2" x="90" y="16" width="16" height="28" rx="3"/><rect class="cav" x="96.6" y="21" width="2.8" height="18" rx="1.4"/>
-     <circle class="f t1" cx="${G.CRANK[0]}" cy="${G.CRANK[1]}" r="20"/><circle class="lnf" cx="${G.CRANK[0]}" cy="${G.CRANK[1]}" r="15.5"/>
-     ${Array.from({length:12},(_,i)=>{const a=i/12*Math.PI*2;return `<line class="lnl" x1="${f(G.CRANK[0]+Math.cos(a)*17)}" y1="${f(G.CRANK[1]+Math.sin(a)*17)}" x2="${f(G.CRANK[0]+Math.cos(a)*19)}" y2="${f(G.CRANK[1]+Math.sin(a)*19)}"/>`}).join('')}
-     <g transform="translate(11,9) scale(.14)"><rect x="6" y="6" width="88" height="88" rx="21" class="f t0"/><rect x="42.5" y="44" width="15" height="34" rx="7.5" class="t3"/><path d="M37 33 50 22 63 33" fill="none" stroke="#e5484d" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g></g>`;
-  /* crank: stacked planes for thickness, each rotates */
-  const [cu,cv]=G.CRANK;
-  for(let t=1;t<=3;t++)s+=`<g transform="${mY(0,120+t,114)}"><circle class="t1 nos" cx="${cu}" cy="${cv}" r="7.5"/></g>`;
-  s+=`<g transform="${mY(0,124,114)}"><circle class="f t3" cx="${cu}" cy="${cv}" r="7.5"/></g>`;
-  for(let t=4;t<=6;t++)s+=`<g transform="${mY(0,120+t,114)}"><g class="crot" transform="rotate(0 ${cu} ${cv})"><rect class="${t<6?'t1 nos':'f t3'}" x="${cu-3.2}" y="${cv-3.2}" width="23" height="6.4" rx="3.2"/></g></g>`;
-  for(let t=6;t<=13;t++)s+=`<g transform="${mY(0,120+t,114)}"><g class="crot" transform="rotate(0 ${cu} ${cv})"><circle class="${t<13?'r1 nos':'f r2'}" cx="${cu+17}" cy="${cv}" r="4.6"/>${t==13?`<circle cx="${cu+15.8}" cy="${cv-1.2}" r="1.2" fill="#fff" opacity=".6"/>`:''}</g></g>`;
-  s+=`<g transform="${mY(0,126,114)}"><circle class="dot" cx="${cu}" cy="${cv}" r="1.2"/></g>`;
-  /* crank hit area (screen) */
-  const ch=P(cu,126,114-cv);s+=`<circle class="crank" id="${sfx}crankhit" cx="${f(ch[0])}" cy="${f(ch[1])}" r="30" fill="transparent"/>`;
-  /* globe: sphere + pile + collar lip + cap */
-  const gc=P(...G.GC),gr=G.GR*1.2247;
-  s+=cyl(60,60,114,40,10);
-  s+=`<circle cx="${f(gc[0])}" cy="${f(gc[1])}" r="${f(gr)}" style="fill:url(#glassg${sfx});stroke:none"/>`;
-  s+=`<g id="${sfx}pile">`;const rnd=rand(7);const pile=[];
-  for(let i=0;i<34;i++){for(let k=0;k<30;k++){const z=124+rnd()*30,dz=z-G.GC[2],rr=Math.sqrt(Math.max(0,(G.GR-7)**2-dz*dz));const a=rnd()*Math.PI*2,r=Math.sqrt(rnd())*rr;const p=[60+Math.cos(a)*r,60+Math.sin(a)*r,z];
-      if(pile.every(q=>(q[0]-p[0])**2+(q[1]-p[1])**2+(q[2]-p[2])**2>110)){pile.push(p);break}}}
-  pile.sort((a,b)=>a[0]+a[1]+a[2]-b[0]-b[1]-b[2]);
-  const tones=['t0','t1','t2','t1','t0','t3'];
-  pile.forEach((p,i)=>{const q=P(...p);s+=`<g class="pc" data-x="${f(q[0])}" data-y="${f(q[1])}" data-r="${Math.round(rnd()*180)}" transform="translate(${f(q[0])},${f(q[1])}) rotate(${Math.round(rnd()*180)})">${ISO.capsule(7.4,i%9==4?'red':tones[i%6])}</g>`});
-  s+=`</g>`;
-  s+=`<circle cx="${f(gc[0])}" cy="${f(gc[1])}" r="${f(gr)}" class="ln" style="stroke:var(--lhi)"/>`;
-  s+=`<path class="shine" d="M${f(gc[0]-gr*.62)},${f(gc[1]-gr*.38)} A${f(gr*.78)},${f(gr*.78)} 0 0 1 ${f(gc[0]-gr*.12)},${f(gc[1]-gr*.76)}"/><path class="shine" style="stroke-width:1.2;opacity:.45" d="M${f(gc[0]+gr*.55)},${f(gc[1]+gr*.42)} A${f(gr*.75)},${f(gr*.75)} 0 0 1 ${f(gc[0]+gr*.2)},${f(gc[1]+gr*.66)}"/>`;
-  {const b=ell(60,60,114,40),t=ell(60,60,124,40);s+=`<path class="f" fill="url(#cg${sfx})" d="M${f(t.X-t.rx)},${f(t.Y)} A${f(t.rx)},${f(t.ry)} 0 0 0 ${f(t.X+t.rx)},${f(t.Y)} L${f(b.X+b.rx)},${f(b.Y)} A${f(b.rx)},${f(b.ry)} 0 0 1 ${f(b.X-b.rx)},${f(b.Y)} Z"/>`;
-   const t2=ell(60,60,121,40);s+=`<path class="lnf" d="M${f(t2.X-t2.rx)},${f(t2.Y)} A${f(t2.rx)},${f(t2.ry)} 0 0 0 ${f(t2.X+t2.rx)},${f(t2.Y)}"/>`}
-  s+=cyl(60,60,196,11,7,{ring:.6})+cyl(60,60,203,4,4);
-  /* shelf */
-  s+=box(34,120,30,48,13,4,{bevel:1.5});
-  /* chute: post, floor + back wall */
-  s+=cyl(150,126,0,2.6,28.6)+cyl(150,126,0,6,2);
-  s+=slope(84,180,119,14,31.5,27.5,2.5)+slope(84,180,119,1.6,34,30,4.5);
-  /* chest body (cavity) */
-  s+=`<g id="${sfx}chestb">${ISO.chestBody(G.CHEST,sfx+'gc')}</g>`;
-  /* capsule actor */
-  const dc=[[d0,120.2,z0],[d1,120.2,z0],[d1,120.2,z1],[d0,120.2,z1]];
-  s+=`<clipPath id="${sfx}doorclip"><polygon points="${pts(dc)}"/></clipPath>`;
-  s+=`<g id="${sfx}capwrap"><g id="${sfx}cap" transform="translate(-999,-999)">${ISO.capsule(G.CR,'red')}</g></g>`;
-  /* flap over door */
-  s+=`<g transform="${mY(0,120.3,114)}"><g id="${sfx}flap"><rect class="f t1" x="${d0+1}" y="${114-z1+1}" width="${d1-d0-2}" height="11" rx="2"/><line class="lnl" x1="${d0+4}" y1="${114-z1+9}" x2="${d1-4}" y2="${114-z1+9}"/></g></g>`;
-  /* chute front wall, chest front, lid */
-  s+=slope(84,180,131.4,1.6,34,30,4.5);
-  s+=ISO.chestFront(G.CHEST);
-  s+=`<g id="${sfx}lid">${ISO.lidSVG(G.CHEST,0)}</g>`;
-  s+=`</svg>`;return s;
+  [[x0+4,y0+4],[x0+W-4,y0+4],[x0+4,y0+W-4],[x0+W-4,y0+W-4]].forEach(([a,b])=>{s+=cyl(a,b,0,C.mini?1.4:2.6,2,'k')});
+  s+=box(x0-2,y0-2,2,W+4,W+4,C.base-2,{tone:'k',bevel:C.mini?0:1.4});
+  /* back walls + back post */
+  s+=glassX(x0,y0,y0+W,C.base,ct,{plain:1})+glassY(x0,x0+W,y0,C.base,ct,{plain:1});
+  s+=box(x0,y0,C.base,3,3,ct-C.base,{tone:'k'});
+  /* trays: inside vs outside */
+  const items=[];
+  for(let j=1;j<=C.N;j++){const t=L.trays[j];const inside=t.dx<1&&t.z<ct-.5;items.push({j,t,inside})}
+  const draw=it=>trayG(C,it.j,it.t.dx,it.t.z,L.caps&&L.caps[it.j],L.show&&L.show[it.j],L.active===it.j);
+  items.filter(i=>i.inside).sort((a,b)=>a.t.z-b.t.z).forEach(it=>{s+=draw(it)});
+  /* back rim */
+  s+=box(x0,y0,ct,W,3,2.4,{tone:'k'})+box(x0,y0,ct,3,W,2.4,{tone:'k'});
+  /* front walls */
+  s+=glassX(x0+W,y0,y0+W,C.base,ct)+glassY(x0,x0+W,y0+W,C.base,ct);
+  if(!C.mini){for(let j=1;j<C.N;j++){const z=G.home(j);s+=seg([x0+W,y0+3,z],[x0+W,y0+W-3,z],'d2');s+=seg([x0+3,y0+W,z],[x0+W-3,y0+W,z],'d2')}}
+  /* posts + front rim */
+  s+=box(x0,y0+W-3,C.base,3,3,ct-C.base,{tone:'k'})+box(x0+W-3,y0,C.base,3,3,ct-C.base,{tone:'k'});
+  s+=box(x0,y0+W-3,ct,W,3,2.4,{tone:'k'})+box(x0+W-3,y0,ct,3,W,2.4,{tone:'k'});
+  s+=box(x0+W-3,y0+W-3,C.base,3,3,ct-C.base+2.4,{tone:'k'});
+  /* keeper for latch */
+  s+=box(x0+W/2-(C.mini?1.6:3.2),y0+W,ct-(C.mini?3:6),C.mini?3.2:6.4,1,C.mini?2:3,{tone:'k'});
+  /* side layer tabs */
+  if(o.tabs){for(let j=1;j<=C.N;j++){const ty=y0+8+(j-1)*21,tw=17,zb=G.home(j)+1.6,th=C.th-3.4,on=L.active===j;
+    s+=`<g class="ltab ${on?'on':''}" data-l="${j}">`+box(x0+W,ty,zb,6,tw,th,{tone:on?'k':''})+`</g>`}}
+  /* outside things: sorted by z (lower first) */
+  const out=items.filter(i=>!i.inside).map(it=>({z:it.t.z,s:()=>draw(it)}));
+  out.push({z:L.lid.z,s:()=>lidG(C,L.lid.dx,L.lid.z,L.latch)});
+  out.sort((a,b)=>a.z-b.z).forEach(o2=>{s+=o2.s()});
+  return s;
 }
+function layout(C,page,open){
+  const G=geo(C),L={trays:{},lid:{dx:0,z:G.caseTop},latch:0};
+  for(let j=1;j<=C.N;j++)L.trays[j]={dx:0,z:G.home(j)};
+  if(open){L.latch=1;L.lid={dx:G.stashDX,z:0};let zz=C.lidH;
+    for(let j=1;j<page;j++){L.trays[j]={dx:G.stashDX,z:zz};zz+=C.th-2}}
+  return L;
+}
+return {svg,layout,geo,pocketXY};
+})();
 
 
-type Pt = [number, number, number]
-interface ChestDim { x: number, y: number, z: number, w: number, d: number, h: number, lh: number }
-const _ISO = ISO as unknown as {
-  setSfx: (v: string) => void, P: (...p: Pt) => [number, number], defs: () => string, halo: (cx: number, cy: number, z: number, r: number, sc?: number) => string,
-  chestBody: (c: ChestDim, id: string) => string, chestFront: (c: ChestDim, mini?: boolean | number) => string, lidSVG: (c: ChestDim, deg: number, mini?: boolean | number) => string,
-}
-const _tween = tween as unknown as (dur: number, fn: (e: number, t: number) => void, ease?: (t: number) => number) => Promise<void>
-const _G = G as unknown as { GC: Pt, GR: number, CR: number, CHEST: ChestDim, CRANK: [number, number], DOOR: [number, number, number, number] }
-const _wiggle = wiggleChest as unknown as (svg: SVGSVGElement | null, big?: ChestDim) => Promise<void> | undefined
-export { _ISO as ISO, MINI, miniChestSVG, _tween as tween, easeIO, easeOutBack, sleep, _wiggle as wiggleChest, _G as G, gachaSVG }
+const GACHA=(()=>{
+const {P,f,poly,box,glassX,glassY,cyl,seg,dot,mX,mY,mZ,capsule}=ISO;
+const MINI_C={x0:130,y0:38,W:36,N:2,th:8,base:4,lidH:5,mini:true};
+/* capsule pile: deterministic heap */
+function pile(){let r=7;const out=[];let seed=11;const rnd=()=>{seed=(seed*9301+49297)%233280;return seed/233280};
+  for(let layer=0;layer<5;layer++){const step=13.4,off=layer%2?step/2:0;
+    for(let gx=12+off;gx<=88;gx+=step)for(let gy=12+off;gy<=88;gy+=step){const d=Math.hypot(gx-50,gy-50);const hz=74+7+layer*10;if(d>46-layer*8.5)continue;if(layer>1&&rnd()<.15)continue;
+      out.push({x:gx+(rnd()-.5)*2,y:gy+(rnd()-.5)*2,z:hz+(rnd()-.5)*1.5,top:CAPC[Math.floor(rnd()*CAPC.length)],tag:'',rot:Math.floor(rnd()*180)-90})}}
+  return out.sort((a,b)=>(a.x+a.y+a.z*1.2)-(b.x+b.y+b.z*1.2))}
+const PILE=pile();
+/* parts — n: callout number, v: explode vector, a: landing order (higher lands first), side: callout column */
+const PARTS=[
+ {id:'base',n:8,nm:'底座',v:[0,0,-30],a:.55,anc:[54,108,8],side:'l'},
+ {id:'gear',n:2,nm:'齿轮组',v:[34,0,0],a:.46,anc:[70,60,44],side:'r'},
+ {id:'front',n:0,nm:'前面板',v:[0,28,0],a:.4,anc:[50,100,30]},
+ {id:'glassL',n:0,nm:'下侧板',v:[48,0,0],a:.34,anc:[98,50,42]},
+ {id:'glassU',n:6,nm:'玻璃侧板',v:[42,0,0],a:.28,anc:[98.5,16,118],side:'r'},
+ {id:'glassF',n:0,nm:'前玻璃',v:[0,42,0],a:.24,anc:[40,98.5,102]},
+ {id:'exit',n:4,nm:'出口',v:[0,50,0],a:.16,anc:[31,112,22],side:'l'},
+ {id:'crank',n:1,nm:'摇杆',v:[0,66,0],a:.08,anc:[70,102,60],side:'l'},
+ {id:'lid',n:5,nm:'顶盖',v:[0,0,62],a:0,anc:[18,96,142],side:'l'},
+];
+const STATIC_CALL=[{id:'bin',n:3,nm:'胶囊仓',anc:[74,30,92],side:'r'},{id:'frame',n:7,nm:'机身框架',anc:[97.5,54,72],side:'r'},{id:'case9',n:9,nm:'收纳盒',anc:[148,56,24],side:'r'}];
+function frameBack(){let s='';
+  s+=box(0,0,14,5,5,120,{tone:'k'});
+  s+=box(5,0,70,90,5,4,{tone:'k'})+box(0,5,70,5,90,4,{tone:'k'});
+  s+=box(5,0,130,90,5,4,{tone:'k'})+box(0,5,130,5,90,4,{tone:'k'});
+  /* lower interior walls */
+  s+=poly([[5,5,14],[95,5,14],[95,5,70],[5,5,70]],'inner')+poly([[5,5,14],[5,95,14],[5,95,70],[5,5,70]],'inner2');
+  s+=poly([[5,5,14],[95,5,14],[95,95,14],[5,95,14]],'innerf');
+  /* chute (inside) */
+  s+=poly([[22,60,72],[40,60,72],[40,98,30],[22,98,30]],'tp')+poly([[40,60,72],[40,98,30],[40,98,26],[40,60,68]],'fr');
+  return s}
+function gearAsm(){let s='';const O=[70,90,66];
+  s+=`<g transform="${mX(...O)}">`+
+   `<rect class="plate" x="0" y="0" width="60" height="46" rx="2"/><rect class="d2 nf" x="2.4" y="2.4" width="55.2" height="41.2" rx="1.2"/>`+
+   [[4,4],[56,4],[4,42],[56,42]].map(([u,v])=>`<circle class="dt" cx="${u}" cy="${v}" r=".9"/>`).join('')+
+   `<g class="gA" transform="translate(30,22)"><path class="gear" d="${ISO.gearPath(14,18,2.6)}"/><circle class="gi" r="9.4"/>${[0,1,2,3,4,5].map(k=>`<circle class="gh" cx="${f(Math.cos(k*1.047)*6)}" cy="${f(Math.sin(k*1.047)*6)}" r="1.5"/>`).join('')}<circle class="hub" r="2.6"/><line class="d1" x1="0" y1="-11.5" x2="0" y2="-9.6"/></g>`+
+   `<g class="gB" transform="translate(50.6,31.6)"><path class="gear" d="${ISO.gearPath(9.2,12,2.4)}"/><circle class="gi" r="5.4"/><circle class="hub" r="2"/><line class="d1" x1="0" y1="-7.4" x2="0" y2="-5.6"/></g>`+
+   `<g class="gC" transform="translate(13,34)"><path class="gear r" d="${ISO.gearPath(7,10,2.2)}"/><circle class="hub" r="1.6"/></g>`+
+   `</g>`;
+  /* axle stub to front */
+  s+=seg([70,60,44],[70,96,44],'axle');
+  return s}
+function binBack(){let s='';
+  s+=box(5,5,72,90,90,2.4,{});
+  s+=glassX(5,5,95,74.4,130,{plain:1})+glassY(5,95,5,74.4,130,{plain:1});
+  const e=ISO.ell(31,64,74.4,7);s+=`<ellipse class="hole" cx="${f(e.X)}" cy="${f(e.Y)}" rx="${f(e.rx)}" ry="${f(e.ry)}"/>`;
+  s+=cyl(50,40,74.4,1.6,26);
+  return s}
+function pileSVG(hide){return PILE.map((c,i)=>{if(hide===i)return '';const q=P(c.x,c.y,c.z);return `<g class="pc" data-i="${i}" transform="translate(${f(q[0])},${f(q[1])}) rotate(${c.rot})">${capsule(6.6,c.top,c.tag)}</g>`}).join('')}
+function paddle(a){const r=13,c=Math.cos(a),s2=Math.sin(a);const p1=[50+c*r,40+s2*r,100],p2=[50-c*r,40-s2*r,100];
+  return poly([[p1[0],p1[1],100],[p2[0],p2[1],100],[p2[0],p2[1],103],[p1[0],p1[1],103]],'fl k')+cyl(50,40,99,2.2,5,'k')}
+function frameFront(){let s='';
+  s+=box(0,95,14,5,5,120,{tone:'k'})+box(95,0,14,5,5,120,{tone:'k'});
+  s+=box(5,95,70,90,5,4,{tone:'k'})+box(95,5,70,5,90,4,{tone:'k'});
+  s+=box(5,95,130,90,5,4,{tone:'k'})+box(95,5,130,5,90,4,{tone:'k'});
+  s+=box(95,95,14,5,5,120,{tone:'k'});
+  [[97.5,97.5,70],[97.5,97.5,130],[2.5,97.5,130],[97.5,2.5,130]].forEach(p=>{s+=dot([p[0],p[1],p[2]+4],.7,'dtw')});
+  return s}
+function baseSVG(){let s='';
+  [[-2,-2],[102,-2],[-2,102],[102,102]].forEach(([a,b])=>{s+=cyl(a,b,0,3.2,4,'k')});
+  s+=box(-8,-8,4,116,116,10,{tone:'k',bevel:2.2,screws:3.4});
+  s+=`<g transform="${mY(14,108.05,12)}"><rect class="lplate" x="0" y="0" width="30" height="6.4" rx=".6"/><line class="d2" x1="3" y1="2" x2="20" y2="2"/><line class="d2" x1="3" y1="3.6" x2="26" y2="3.6"/><line class="d2" x1="3" y1="5" x2="16" y2="5"/></g>`;
+  return s}
+function frontSVG(){let s='';
+  s+=box(5,98,14,90,2,56,{});
+  s+=`<g transform="${mY(5,100.05,70)}">`+
+   `<rect class="d2 nf" x="2" y="2" width="86" height="52" rx="1"/>`+
+   `<rect class="cav" x="13" y="34" width="26" height="16" rx="2"/><rect class="flap" x="13.6" y="34.6" width="24.8" height="6.4" rx="1"/><line class="d1" x1="15" y1="41" x2="37" y2="41"/>`+
+   `<circle class="boss" cx="65" cy="26" r="10"/><circle class="d2 nf" cx="65" cy="26" r="8"/>${Array.from({length:12},(_,k)=>{const a=k/12*Math.PI*2;return `<line class="d2" x1="${f(65+Math.cos(a)*8.6)}" y1="${f(26+Math.sin(a)*8.6)}" x2="${f(65+Math.cos(a)*9.6)}" y2="${f(26+Math.sin(a)*9.6)}"/>`}).join('')}`+
+   `<circle class="led r" cx="9" cy="8" r="1.9"/><circle class="led o" cx="15" cy="8" r="1.9"/><circle class="led g" cx="21" cy="8" r="1.9"/>`+
+   `<rect class="slotp" x="44" y="6" width="12" height="16" rx="1.2"/><rect class="cav" x="49" y="9" width="2" height="10" rx="1"/>`+
+   `<rect class="lplate" x="62" y="42" width="20" height="7" rx=".6"/><line class="d2" x1="65" y1="45.5" x2="79" y2="45.5"/>`+
+   [[4,4],[86,4],[4,52],[86,52]].map(([u,v])=>`<circle class="dt" cx="${u}" cy="${v}" r=".8"/>`).join('')+`</g>`;
+  return s}
+function exitSVG(){let s='';
+  s+=box(16,100,17,30,13,2.4,{});
+  s+=box(16,100,19.4,2,13,5,{})+box(44,100,19.4,2,13,5,{hatch:1});
+  s+=box(18,111,19.4,26,2,4.2,{tone:'r'});
+  return s}
+function crankSVG(){return `<g transform="${mY(70,101.2,44)}">`+
+  `<circle class="hubb" r="5.6"/><g class="crot"><path class="arm" d="M-2.2,0 L-1.6,-16 L1.6,-16 L2.2,0 Z"/><circle class="hub" r="3.2"/>`+
+  `<g transform="translate(0,-16)"><circle class="knob" r="4.6"/><circle class="knobh" cx="-1.4" cy="-1.6" r="1.5"/></g></g></g>`+
+  `<path class="axle" d="${(()=>{const a=P(70,100,44),b=P(70,101.2,44);return `M${f(a[0])},${f(a[1])} L${f(b[0])},${f(b[1])}`})()}"/>`}
+function glassLSVG(){return glassX(98.5,5,95,14,70)}
+function glassUSVG(){return glassX(98.5,5,95,74,130)}
+function glassFSVG(){return glassY(5,95,98.5,74,130)}
+function lidSVG(){let s='';
+  s+=box(-4,-4,134,108,108,3,{tone:'k'});s+=box(-2,-2,137,104,104,5,{bevel:3.4,screws:3.6,hatch:1});
+  s+=box(34,34,142,32,32,5,{tone:'k',bevel:1.6});
+  s+=`<g transform="${mZ(40,40,147)}"><rect class="k-badge" x="0" y="0" width="20" height="20" rx="5"/><rect x="8" y="9" width="4" height="7.6" rx="2" class="lgi"/><path d="M6.4 7 10 4.2 13.6 7" class="lgc"/></g>`;
+  return s}
+const BUILD={base:baseSVG,gear:gearAsm,front:frontSVG,glassL:glassLSVG,glassU:glassUSVG,glassF:glassFSVG,exit:exitSVG,crank:crankSVG,lid:lidSVG};
+const GUIDE={base:[[-8,108,4],[108,108,4],[108,-8,4]],gear:[[70,30,20],[70,90,66]],front:[[5,100,14],[95,100,14],[95,100,70]],glassL:[[98.5,95,14],[98.5,5,70]],glassU:[[98.5,95,74],[98.5,5,130]],glassF:[[5,98.5,74],[95,98.5,130]],exit:[[16,113,17],[46,113,17]],crank:[[70,101,44]],lid:[[-4,104,134],[104,104,134],[104,-4,134]]};
+return {PARTS,STATIC_CALL,BUILD,GUIDE,frameBack,frameFront,binBack,pileSVG,paddle,PILE,MINI_C};
+})();
+
+/* 整机场景（组装态）· 大机器与首页迷你机器共用同一份画法，便于 FLIP 共享元素过渡 */
+const GACHA_VB={A:[-114,-158,232,292],E:[-146,-232,288,384],M:[-108,-160,216,276]};
+function gachaScene(sfx,opt={}){ISO.setSfx(sfx);const G=GACHA;const pg=id=>`<g class="part" data-p="${id}"><g class="pin">${G.BUILD[id]()}</g></g>`;
+  let s=ISO.defs();
+  s+=`<polygon class="halo" points="${ISO.pts([[-12,-12,0],[118,-12,0],[118,118,0],[-12,118,0]])}"/>`;
+  s+=pg('base');s+=`<g class="part st" data-p="frame">${G.frameBack()}</g>`;s+=pg('gear');
+  s+=`<g class="part st" data-p="bin">${G.binBack()}<g class="pile">${G.pileSVG()}</g><g class="paddle">${G.paddle(0)}</g></g>`;
+  s+=`<g class="part st" data-p="frame2">${G.frameFront()}</g>`;
+  ['front','exit','glassL','glassU','glassF','crank','lid'].forEach(id=>{s+=pg(id)});
+  if(opt.withCase)s+=`<g class="part st" data-p="case9"></g><g class="drop"></g>`;
+  return s}
+
+const PILE_PICK=(()=>{const a=[];GACHA.PILE.forEach((c,i)=>{if(c.z>95)a.push(i)});return a.length?a:[0]})();
+function P3(x,y,z){return ISO.P(x,y,z)}
+
+type Tw = (dur: number, fn: (e: number, t: number) => void, ease?: (t: number) => number) => Promise<void>
+const _tween = tween as unknown as Tw
+const _sleep = sleep as unknown as (ms: number) => Promise<void>
+const _anim = anim as unknown as (el: Element, kf: Keyframe[], o: KeyframeAnimationOptions) => Animation
+export { ISO, GACHA, CASE, GACHA_VB, gachaScene, PILE_PICK, P3, TAGC, CAPC, LAYC, GLYPH_GACHA, GLYPH_CASE, _tween as tween, _sleep as sleep, _anim as anim, easeIO, easeOut, easeOutBack, clamp01, RM }

@@ -1,8 +1,8 @@
-// Motion helpers shared by every view: the title-bar chest (灵感宝箱), flights into it, combo particles,
+// Motion helpers shared by every view: the title-bar capsule case (扭蛋收纳盒), flights into it, combo particles,
 // and popovers anchored to the element that opened them.
 import { reactive } from 'vue'
 import { R, S } from './store'
-import { wiggleChest } from './iso'
+import { ISO } from './iso'
 
 export const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -15,54 +15,51 @@ let lastEl: Element | null = null
 if (typeof document !== 'undefined') document.addEventListener('pointerdown', e => { lastEl = e.target as Element }, true)
 export const lastPressed = () => (lastEl && document.contains(lastEl) ? lastEl : null)
 
-const chestSvg = () => document.querySelector<SVGSVGElement>('.chestbtn svg.mchest')
+const caseGlyph = () => document.querySelector<HTMLElement>('.chestbtn .tgi')
 
-/** Lid bounce + badge tick, without a flight. */
+/** Case glyph squash + lid pop + badge tick, without a flight. */
 export function bumpChest() {
   chest.tick++
-  if (!reduced()) wiggleChest(chestSvg())
+  const g = caseGlyph()
+  if (!g || reduced()) return
+  g.animate([{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(1.5px) scale(1.12,.88)' }, { transform: 'translateY(-2px) scale(.96,1.06)' }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.34,1.56,.64,1)' })
+  const lid = g.querySelector('.glid')
+  lid?.animate([{ transform: 'none' }, { transform: 'translateY(-3.5px) rotate(-8deg)' }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.34,1.56,.64,1)' })
 }
 
 /**
- * Fly `html` (an svg string) from `from` to the title-bar chest along an arc with a short red trail,
- * then bounce the lid and tick the badge.
+ * Save flight: the icon (`html`, an svg string) shrinks into a small red capsule at `from`,
+ * which arcs into the title-bar capsule case; then the case pops its lid and the badge ticks.
  */
 export function flyToChest(from: Element | null | undefined, html: string, o: { size?: number, dur?: number } = {}): Promise<void> {
-  const to = chestSvg()
-  if (!from || !to || !html || reduced()) { bumpChest(); return Promise.resolve() }
+  const to = caseGlyph()
+  if (!from || !to || reduced()) { bumpChest(); return Promise.resolve() }
   const a = from.getBoundingClientRect()
   const b = to.getBoundingClientRect()
-  const sz = o.size || Math.max(18, Math.min(30, Math.min(a.width, a.height) * 0.6))
+  const sz = o.size || 26
+  const R = 11
+  const d = document.createElement('div')
+  d.className = 'fly'
+  d.style.cssText = `width:${sz}px;height:${sz}px;font-size:${sz}px`
+  d.innerHTML = `<span class="fi">${html || ''}</span><svg class="iso10 fcap" viewBox="-${R} -${R} ${2 * R} ${2 * R}">${ISO.capsule(R * 0.92, 'r', '')}</svg>`
+  document.querySelector('.win')!.appendChild(d)
   const x0 = a.left + a.width / 2 - sz / 2
   const y0 = a.top + a.height / 2 - sz / 2
   const x1 = b.left + b.width / 2 - sz / 2
-  const y1 = b.top + b.height / 2 - sz / 2 - 2
-  const cx = (x0 + x1) / 2 - 40
-  const cy = Math.min(y0, y1) - 70
+  const y1 = b.top + b.height / 2 - sz / 2
+  const cx = (x0 + x1) / 2 - 50
+  const cy = Math.min(y0, y1) + 34
   const kf: Keyframe[] = []
   for (let i = 0; i <= 16; i++) {
     const t = i / 16
     const u = 1 - t
     const x = u * u * x0 + 2 * u * t * cx + t * t * x1
     const y = u * u * y0 + 2 * u * t * cy + t * t * y1
-    kf.push({ transform: `translate(${x}px,${y}px) scale(${1 - t * 0.78}) rotate(${t * -25}deg)`, opacity: t > 0.92 ? 0 : 1 })
+    kf.push({ transform: `translate(${x}px,${y}px) scale(${1 - t * 0.55}) rotate(${t * -200}deg)`, opacity: t > 0.94 ? 0 : 1 })
   }
-  const dur = o.dur || 720
-  const mk = () => {
-    const d = document.createElement('div')
-    d.className = 'fly'
-    d.style.cssText = `width:${sz}px;height:${sz}px;font-size:${sz}px;color:var(--red)`
-    d.innerHTML = html
-    document.querySelector('.win')!.appendChild(d)
-    return d
-  }
-  for (let k = 1; k <= 3; k++) {
-    const g = mk()
-    g.style.opacity = '0'
-    g.animate(kf.map(f => ({ ...f, opacity: (f.opacity as number) * (0.34 - k * 0.08) })), { duration: dur, delay: k * 42, easing: 'cubic-bezier(.45,0,.25,1)' }).finished.then(() => g.remove())
-  }
-  const d = mk()
-  return d.animate(kf, { duration: dur, easing: 'cubic-bezier(.45,0,.25,1)' }).finished.then(() => { d.remove(); bumpChest() })
+  d.querySelector('.fi')!.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.4)' }], { duration: 200, fill: 'forwards' })
+  d.querySelector('.fcap')!.animate([{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 220, fill: 'forwards' })
+  return d.animate(kf, { duration: o.dur || 700, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished.then(() => { d.remove(); bumpChest() })
 }
 
 /** Little red particles bursting out of an element (combo). */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import UiIcon from './UiIcon.vue'
 import Logo from './Logo.vue'
 import { R, type Mode } from '../lib/store'
@@ -7,7 +7,7 @@ import { t } from '../lib/i18n'
 import { setMode } from '../lib/actions'
 import { inTauri, isMac, modKey, win } from '../lib/native'
 import { chest, chestCount, openPop } from '../lib/fx'
-import { miniChestSVG } from '../lib/iso'
+import { GLYPH_CASE, GLYPH_GACHA } from '../lib/iso'
 
 // Title bar = drag + switch. Everything that is not a control carries data-tauri-drag-region
 // (Tauri only starts a drag when the pressed element itself has the attribute).
@@ -15,8 +15,6 @@ const MODES: [Mode, string, string][] = [['search', 'lucide:search', 'mSearch'],
 const mac = isMac && inTauri
 const showWinControls = inTauri && !isMac
 const count = computed(() => chestCount())
-const chestHost = ref<HTMLElement>()
-onMounted(() => { if (chestHost.value) chestHost.value.innerHTML = miniChestSVG() })
 // Badge digit rolls whenever the count changes or a flight lands.
 const tickKey = ref(0)
 watch([count, () => chest.tick], () => { tickKey.value++ })
@@ -33,11 +31,11 @@ const wclose = async () => (await win()).close()
     </div>
     <div class="drag" data-tauri-drag-region />
     <div class="modes">
-      <button v-for="([m, ic, k], i) in MODES" :key="m" :class="{ on: R.mode === m }" :title="`${t(k)}  ${modKey}${i + 1}`" @click="setMode(m)">
-        <UiIcon :name="ic" /><span class="lb">{{ t(k) }}</span>
+      <button v-for="([m, ic, k], i) in MODES" :key="m" :class="{ on: R.mode === m }" :title="`${t(k)}  ${modKey}${i + 1}`" @click="setMode(m); ($event.currentTarget as HTMLElement).blur()">
+        <span v-if="m === 'swipe'" class="tgi" v-html="GLYPH_GACHA" /><UiIcon v-else :name="ic" /><span class="lb">{{ t(k) }}</span>
       </button>
-      <button class="chestbtn" :class="{ on: R.mode === 'fav' }" :title="`${t('chestTip')}  ${modKey}4`" @click="setMode('fav')">
-        <span class="cw"><span ref="chestHost" class="ch" /><span v-if="count" class="badge"><span :key="tickKey" class="tick">{{ count > 99 ? '99+' : count }}</span></span></span>
+      <button class="chestbtn" :class="{ on: R.mode === 'fav' }" :title="`${t('chestTip')}  ${modKey}4`" @click="setMode('fav'); ($event.currentTarget as HTMLElement).blur()">
+        <span class="cw"><span class="tgi ch" v-html="GLYPH_CASE" /><span v-if="count" class="badge"><span :key="tickKey" class="tick">{{ count > 99 ? '99+' : count }}</span></span></span>
         <span class="lb">{{ t('mFav') }}</span>
       </button>
     </div>
