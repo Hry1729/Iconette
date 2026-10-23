@@ -200,7 +200,7 @@ function scene(o={}){let s=`<g class="ink-all">`;
   s+=`<g class="m-sh">${shadow()}</g>`;
   if(o.chest)s+=`<g class="chest-sh">${CHEST.shadow(CHEST.SMALL)}</g>`;
   s+=`<g class="mach"><g class="shk">${body()}${globe()}</g></g>`;
-  if(o.chest)s+=`<g class="chestg">${CHEST.svg(CHEST.SMALL,0,{pile:o.pile||0})}</g>`;
+  if(o.chest)s+=`<g class="chestg">${CHEST.svg(CHEST.SMALL,0,{pile:o.pile||''})}</g>`;
   s+=`<g class="drop"></g></g>`;
   return s}
 return {W,DP,BH,CX,CY,GZ,GR,CAPZ,DIAL,EXIT,CR,FR,PILE,PICK,knob,flap,scene,VB,P};
@@ -233,8 +233,8 @@ function bodyBack(C,open){const {x,y,z,w,d,h}=C,t=Math.max(1.2,w*.05),zt=z+h,k=w
   s+=poly([[x,y,zt],[x+w,y,zt],[x+w,y+d,zt],[x,y+d,zt]],'c-top');
   const inner=[[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+d-t,zt],[x+t,y+d-t,zt]];
   s+=poly(inner,'c-cav');
-  s+=path(D(pr([[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+t,zt-h*.5],[x+t,y+t,zt-h*.5]])),'c-cav2 nst');
-  s+=path(D(pr([[x+t,y+t,zt],[x+t,y+d-t,zt],[x+t,y+d-t,zt-h*.5],[x+t,y+t,zt-h*.5]])),'c-cav3 nst');
+  s+=path(D(pr([[x+t,y+t,zt],[x+w-t,y+t,zt],[x+w-t,y+t,zt-h*.6],[x+t,y+t,zt-h*.6]])),'c-cav2 nst');
+  s+=path(D(pr([[x+t,y+t,zt],[x+t,y+d-t,zt],[x+t,y+d-t,zt-h*.6],[x+t,y+t,zt-h*.6]])),'c-cav3 nst');
   const m=mouthXY(C);s+=`<ellipse class="c-glow" cx="${f(m[0])}" cy="${f(m[1]-2*k)}" rx="${f(52*k)}" ry="${f(26*k)}" style="opacity:${open?1:0}"/>`;
   s+=poly(inner,'il nf');
   return s}
@@ -245,50 +245,27 @@ function bodyFront(C){const {x,y,z,w,d,h}=C,zt=z+h,k=w/104;let s='';
   const hx=x+w/2;s+=poly([[hx-4.2*k,y+d,zt-h*.42],[hx+4.2*k,y+d,zt-h*.42],[hx+4.2*k,y+d,zt],[hx-4.2*k,y+d,zt]],'c-red');
   const kq=P(hx,y+d,zt-h*.24);s+=`<circle class="c-key" cx="${f(kq[0])}" cy="${f(kq[1])}" r="${f(Math.max(.5,1.3*k))}"/>`;
   s+=line([[x,y+d,z+h*.16],[x+w,y+d,z+h*.16],[x+w,y,z+h*.16]],'il thin');
+  /* v0.4.4: the front + right rim strips are painted OVER the pile (with the walls), so capsules sit inside the box:
+     anything below the rim near the front / right is hidden by the rim and the walls instead of floating over them */
+  const t=Math.max(1.2,w*.05);
+  s+=path(D(pr([[x,y+d-t,zt],[x+w-t,y+d-t,zt],[x+w-t,y,zt],[x+w,y,zt],[x+w,y+d,zt],[x,y+d,zt]])),'c-top nst');
+  s+=line([[x+t,y+d-t,zt],[x+w-t,y+d-t,zt],[x+w-t,y+t,zt]],'il');
+  s+=line([[x,y+d,zt],[x+w,y+d,zt],[x+w,y,zt]],'il');
   return s}
 function shadow(C){const {x,y,w,d}=C,e=w*.1;return poly([[x-e*.2,y-e*.2,0],[x+w+e*.6,y-e*.2,0],[x+w+e*.6,y+d+e*1.6,0],[x-e*.2,y+d+e*1.6,0]],'m-shadow')}
-/* v0.4.2 · 箱内胶囊堆：数量由数据决定（= 当前标签里还没飞出来的收藏数，最多画 MAXPILE 颗），绝不多画。
-   一条确定性的「落下顺序」：第 i 颗落在床面或已有胶囊上（10 个候选点里取最低、且不被前壁挡住的）。床面在箱深一半处，
-   随 i 抬高并在中间隆起（大收藏 = 底下还有东西），所以少的几颗躺在箱底靠里，多了逐层堆起越过箱沿；第 13/16/19 颗斜靠在箱沿。
-   n 颗 = 前 n 颗，所以加一颗 / 飞走一颗只动最上面那颗，堆不会整体重排。按 x+y+z 由远到近排序。 */
-const MAXPILE=24,LEANAT=[13,16,19];
-const SEQS=new Map(),PILES=new Map(),cl=v=>v<0?0:v>1?1:v;
-function pileSeq(C){const key=C.w+':'+C.d+':'+C.h;if(SEQS.has(key))return SEQS.get(key);
-  const {hsh,CAPCOL}=INK;const {x,y,z,w,d,h}=C,k=w/104,t=Math.max(1.2,w*.05),zt=z+h,rc=5.2*k,sd=7.31;
-  const x0=x+t+rc*.62,x1=x+w-t-rc*.62,y0=y+t+rc*.62,y1=y+d-t-rc*.62,cx=(x0+x1)/2,cy=(y0+y1)/2;
-  const bed=(px,py,i)=>{const u=(px-cx)/((x1-x0)/2),v=(py-cy)/((y1-y0)/2);return zt-h*.5+h*.4*cl((i-4)/14)+rc*4.2*cl((i-7)/12)*Math.max(0,1-u*u*.8)*Math.max(0,1-v*v*.8)};
-  const o=[];
-  const rest=(px,py,r,i)=>{let zz=bed(px,py,i)+r*.8;for(const c of o){if(c.lean)continue;const dd=Math.hypot(c.x-px,c.y-py),mn=(c.r+r)*.9;if(dd<mn)zz=Math.max(zz,c.z+Math.sqrt(mn*mn-dd*dd))}return zz};
-  /* hidden behind the front / right wall? (the line of sight runs along +x,+y,+z) */
-  const hidden=(px,py,pz,r)=>pz-r*.25<zt-Math.min(y+d-py,x+w-px);
-  for(let i=0;i<MAXPILE;i++){
-    const L=LEANAT.indexOf(i);
-    if(L>=0){const [fx,fy,dz]=[[.2,1,.35],[1,.32,.42],[.66,1,.5]][L];const px=fx===1?x+w-t*.4:x+t+(w-2*t)*fx,py=fy===1?y+d-t*.4:y+t+(d-2*t)*fy;
-      o.push({x:px,y:py,z:zt+rc*dz,r:rc*.95,lean:1,th:-60+L*47,m:.3+L*.08});continue}
-    const r=rc*(.92+hsh(i+sd,1.9)*.16);let best=null;
-    const sp=1-.42*cl((i-5)/9),nc=i<6?10:5;
-    for(let j=0;j<nc;j++){const px=cx+(hsh(i*13+j+sd,3.1)-.5)*(x1-x0)*sp,py=cy+(hsh(i*17+j+sd,7.7)-.5)*(y1-y0)*(.3+.7*sp);const pz=rest(px,py,r,i);
-      const sc=pz+(hidden(px,py,pz,r)?h:0)+(i<6?((py-y)/d+(px-x)/w*.5)*rc*1.6:0)+Math.hypot((px-cx)/(x1-x0),(py-cy)/(y1-y0))*rc*1.5*cl((i-6)/10);
-      if(!best||sc<best.s)best={x:px,y:py,z:pz,s:sc}}
-    o.push({x:best.x,y:best.y,z:best.z,r,th:Math.floor(hsh(best.y+sd,best.x)*360)-180,m:.22+hsh(best.x+1,best.z+sd)*.5})}
-  o.forEach((c,i)=>{c.i=i;c.c0=CAPCOL[Math.floor(hsh(i*3.3+sd,i*5.1+1)*CAPCOL.length)]});
-  SEQS.set(key,o);return o}
-function pileOf(C,n){n=Math.max(0,Math.min(MAXPILE,Math.floor(n||0)));const key=C.w+':'+C.d+':'+C.h+':'+n;if(PILES.has(key))return PILES.get(key);
-  const s=pileSeq(C).slice(0,n).sort((a,b)=>(a.x+a.y+a.z)-(b.x+b.y+b.z));PILES.set(key,s);return s}
-function pileSVG(C,cols){const arr=Array.isArray(cols)?cols.slice(-MAXPILE):null,n=arr?arr.length:cols;const lw=Math.max(.16,.62*C.w/104);
-  return pileOf(C,n).map(c=>{const q=P(c.x,c.y,c.z);return `<g transform="translate(${f(q[0])},${f(q[1])})">${INK.capsule(c.r*1.2247,(arr&&arr[c.i])||c.c0,{th:c.th,m:c.m,lw})}</g>`}).join('')}
-/* top of the heap (screen point) — where capsules leave / land; an empty chest uses the cavity */
-function pileTop(C,n=0){const k=C.w/104,pl=pileOf(C,n);let zz=C.z+C.h-C.h*.3;for(const c of pl)if(!c.lean)zz=Math.max(zz,c.z+c.r*.6);return P(C.x+C.w/2,C.y+C.d/2,Math.max(zz,C.z+C.h-C.h*.3)+2*k)}
+/* v0.4.4 · 箱内胶囊堆由 lib/heap.ts 模拟并渲染（大箱子 FavView，小箱子 GachaView 传入 o.pile 字符串）。
+   数量规则：min(全部收藏数, MAXPILE)，与标签 / 页码无关；0 个收藏 = 空箱。 */
+const MAXPILE=24;
 /* full chest; deg = lid angle. The lid leans back behind the pile when open (>88°) and covers it when closing. */
 const LIDBACK=88;
 const pileOp=deg=>{const v=(deg-24)/36;return v<=0?0:v>=1?1:Math.round(v*100)/100};
 function svg(C,deg,o={}){const L=`<g class="clid">${lid(C,deg)}</g>`;const back=deg>LIDBACK;
-  return `<g class="chest" style="--lw:${C.lw}"><g class="cbody">${bodyBack(C,deg>20)}</g>${back?L:''}<g class="cpile" style="opacity:${pileOp(deg)}">${pileSVG(C,o.pile||0)}</g><g class="cmouth"></g><g class="cfront">${bodyFront(C)}</g>${back?'':L}</g>`}
+  return `<g class="chest" style="--lw:${C.lw}"><g class="cbody">${bodyBack(C,deg>20)}</g>${back?L:''}<g class="cpile" style="opacity:${pileOp(deg)}">${typeof o.pile==='string'?o.pile:''}</g><g class="cmouth"></g><g class="cfront">${bodyFront(C)}</g>${back?'':L}</g>`}
 /* set the lid angle on a rendered chest and keep the lid / pile paint order right */
 function setLid(lidG,C,deg){if(!lidG)return;lidG.innerHTML=lid(C,deg);const p=lidG.parentNode,pile=p&&p.querySelector(':scope>.cpile');if(!pile)return;
   pile.style.opacity=String(pileOp(deg));const back=deg>LIDBACK,isBefore=!!(lidG.compareDocumentPosition(pile)&4);
   if(back&&!isBefore)p.insertBefore(lidG,pile);else if(!back&&isBefore)p.appendChild(lidG)}
-return {BIG,SMALL,MAXPILE,svg,lid,setLid,mouthXY,pileTop,pileSVG,shadow,bodyBack};
+return {BIG,SMALL,MAXPILE,svg,lid,setLid,mouthXY,shadow,bodyBack,bodyFront};
 })();
 
 /* ═════════ 标题栏小图标 v11（v10.2 粗描边等距 · 一处红色）═════════ */

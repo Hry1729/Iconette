@@ -16,7 +16,7 @@ import { modKey } from '../lib/native'
 import { chestFx, machFx, openPop, pageFx, reduced } from '../lib/fx'
 import { icons as setIcons, pickIcons } from '../lib/deck'
 import { CHEST, GM, INK, TAGC, anim, clamp01, easeOut, sleep, tween } from '../lib/iso'
-import { type Tok, bedTop, capInner, capXY, depth, settle } from '../lib/heap'
+import { type Tok, bedTop, capInner, capXY, depth, favIds, pileN, restTokens, settle } from '../lib/heap'
 
 // 收藏 = 灵感宝箱 (v11). The thick-ink chest from v9 stands open; saved icon sets and UI libraries/components are 6
 // cards per page (3 × 2). The open chest holds a static heap of capsules (v0.4.1). Entering: 6 capsules leave the heap
@@ -54,9 +54,10 @@ function delFolder(f: string) { delete S.folders[f]; if (R.folder === f) R.folde
 const CHECKER = 'conic-gradient(#999 0 25%,#ddd 0 50%,#999 0 75%,#ddd 0)'
 
 // ---- the chest
-// v0.4.3: a page turn takes the new page's 6 capsules OUT of the heap and folds the old 6 cards back IN at the same
-// time (same stagger, no lead); the way back is ~18 % slower, so the returning capsules land last, on top of the heap.
-const FLY = { out: 680, back: 800, stag: 55 }
+// v0.4.4: a page turn folds the old 6 cards back into capsules FIRST (the return starts at once, no waiting for the
+// cards to fade) and the new page's 6 capsules leave the heap LEAD ms later; out 620 ms, back 700 ms (a little slower,
+// so the returning capsules land last, on top of the heap).
+const FLY = { out: 620, back: 700, stag: 55, bstag: 40, lead: 50 }
 const items = computed<string[]>(() => (R.favTab === 'ui' ? S.uiFav : R.favTab === 'sets' ? S.sets : []))
 const page = reactive<Record<string, number>>({ sets: 1, ui: 1 })
 const nPages = computed(() => Math.max(1, Math.ceil(items.value.length / 6)))
@@ -83,53 +84,59 @@ const N = (n?: number) => Number(n || 0).toLocaleString()
 const cardTag = (idx: number) => tagOf(idx)
 function openCard(id: string) { if (!id) return; if (R.favTab === 'sets') openSet(id); else openLib(libOf(id)) }
 
-// ---- the heap in the chest (v0.4.3, see lib/heap.ts): one capsule (token) per favourite of this tab that is not out
-// as a card on the visible page (v0.4.2 count rule). `stack` = the simulated, drawn heap (bottom → top, ≤ MAXDRAW at
-// build); `deep` = capsules of big collections that lie below it (shown as a raised bed). 图标 = the icons of the
-// current group (not flown out); 最近 is copy history, not favourites → empty chest. The build order puts the later
-// pages deepest and the next page right under the top, so turning forward pulls from just below the top and the
-// capsules above fall into the gaps; capsules put back always land on top.
-const MAXDRAW = CHEST.MAXPILE
+// ---- the heap in the chest (v0.4.3 physics, see lib/heap.ts; v0.4.4 count rule)
+// The chest is a decorative, mostly-full box: at rest it holds min(all favourites, 24) capsules — icons + sets + UI,
+// independent of the tab and of the cards on show; 0 favourites = empty. Flights only borrow capsules: entering a
+// card tab takes the page's 6 capsules off the top (they were put there on top of the resting heap), a page turn / a
+// switch between card tabs takes 6 out and puts the old 6 back (the heap dips during the flight, then is full again),
+// leaving a card tab drops the old cards in at the top where they vanish. Capsules put back land on top.
 let stack: Tok[] = []
-let deep: Tok[] = []
-let lift = 0
 /** Tokens that leave on this turn but whose flight has not started yet (still drawn in the heap). */
 const outQ = new Set<string>()
+/** card token → heap token it takes out (when the card's own capsule is not in the heap). */
+const donor = new Map<string, string>()
 const nodes = new Map<string, SVGGElement & { _q?: number[], _tw?: number }>()
-const hcol = (id: string) => { let h = 7; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return INK.CAPCOL[h % INK.CAPCOL.length] }
 const tokKey = (id: string) => `${R.favTab}:${id}`
 const tokOf = (idx: number): Tok => ({ k: tokKey(items.value[idx]), c: tagOf(idx) })
-/** Rebuild the heap from data (no animation). `withPage`: the visible page's capsules are still in the chest, on top
- *  (they are about to fly out to the cards). */
+const restN = () => pileN(favIds().length)
+/** The visible page's capsules (they are about to fly out to the cards). */
+function pageToks() {
+  const a = (curPage.value - 1) * 6
+  const o: Tok[] = []
+  for (let i = Math.min(a + 6, items.value.length) - 1; i >= a; i--) o.push(tokOf(i))
+  return o
+}
+/** Rebuild the heap from data (no animation). `withPage`: the visible page's capsules lie on top of the resting heap. */
 function buildHeap(withPage: boolean) {
   outQ.clear()
-  let rest: Tok[] = []
-  let top: Tok[] = []
-  if (R.favTab === 'icons') rest = src.value.map(id => ({ k: `icons:${id}`, c: hcol(id) }))
-  else if (caseMode.value) {
-    const a = (curPage.value - 1) * 6
-    for (let i = items.value.length - 1; i >= 0; i--) if (i < a || i >= a + 6) rest.push(tokOf(i))
-    if (withPage) for (let i = Math.min(a + 6, items.value.length) - 1; i >= a; i--) top.push(tokOf(i))
-  }
-  deep = rest.length > MAXDRAW ? rest.slice(0, rest.length - MAXDRAW) : []
-  stack = rest.slice(deep.length).concat(top)
-  // the bed rises with how much is in the chest (stable while paging: the pile count does not change on a turn)
-  lift = Math.min(1, rest.length / 40 + deep.length / 24)
+  donor.clear()
+  stack = restN() ? restTokens(favIds()) : []
+  if (withPage && caseMode.value && stack.length) stack = stack.concat(pageToks())
   nodes.forEach(n => n.remove())
   nodes.clear()
   renderHeap(false)
 }
-const pileCount = () => stack.length + deep.length
+/** Favourites added / removed while nothing flies: add or take capsules on top so the resting count is right. */
+function syncCount() {
+  const want = restN()
+  if (stack.length === want) return
+  if (stack.length > want) { stack = stack.slice(0, want); renderHeap(true); return }
+  const have = new Set(stack.map(t => t.k))
+  const add = restTokens(favIds()).filter(t => !have.has(t.k)).slice(-(want - stack.length))
+  stack = stack.concat(add)
+  renderHeap(true, new Set(add.map(t => t.k)))
+}
+const pileCount = () => stack.length
 const tf = (q: number[]) => `translate(${INK.f(q[0])},${INK.f(q[1])})`
 /** Bounce at the end of a settle: overshoots ~4 %. */
 const settleEase = (t: number) => { const u = t - 1; return 1 + 2.1 * u * u * u + 1.1 * u * u }
 let twSeq = 0
 /** Draw the simulated heap. animate: capsules that moved fall / roll to their new spot (~300 ms, tiny bounce);
  *  `drop`: these new capsules arrive from a little above (a landing). */
-function renderHeap(animate: boolean, drop?: Set<string>) {
+function renderHeap(animate: boolean, drop?: Set<string>, fade?: Set<string>) {
   const g = svgEl.value?.querySelector(':scope>.chest>.cpile')
   if (!g) return
-  const caps = settle(stack, lift)
+  const caps = settle(stack)
   const live = new Set(caps.map(c => c.k))
   nodes.forEach((n, k) => { if (!live.has(k)) { n.remove(); nodes.delete(k) } })
   const moves: { n: SVGGElement & { _q?: number[] }, a: number[], b: number[] }[] = []
@@ -144,6 +151,7 @@ function renderHeap(animate: boolean, drop?: Set<string>) {
       const from = drop?.has(c.k) && animate ? [q[0], q[1] - 5] : q
       n.setAttribute('transform', tf(from))
       n._q = from
+      if (fade?.has(c.k) && !reduced()) anim(n, [{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' })
     }
     const a = n._q || q
     if (Math.abs(a[0] - q[0]) + Math.abs(a[1] - q[1]) > 0.05) {
@@ -169,7 +177,7 @@ function pull(k: string) {
   const svg = svgEl.value
   if (!svg) return null
   const n = nodes.get(k)
-  const cap = settle(stack, lift).find(c => c.k === k)
+  const cap = settle(stack).find(c => c.k === k)
   let at: { x: number, y: number, s: number, th: number } | null = null
   if (n && cap) {
     const m = svg.getScreenCTM()!
@@ -179,10 +187,8 @@ function pull(k: string) {
   const si = stack.findIndex(t => t.k === k)
   if (si >= 0) stack.splice(si, 1)
   else {
-    const di = deep.findIndex(t => t.k === k)
-    if (di >= 0) deep.splice(di, 1)
     const m = svg.getScreenCTM()!
-    const q = bedTop(lift)
+    const q = bedTop()
     at = { x: m.a * q[0] + m.e, y: m.d * q[1] + m.f, s: m.a * 6.4 * 2, th: -30 }
   }
   renderHeap(true)
@@ -190,19 +196,19 @@ function pull(k: string) {
 }
 /** Final resting spots of capsules put back (on top of the heap as it will be once this turn's capsules are out). */
 function landing(ret: Tok[]) {
-  const fin = settle(stack.filter(t => !outQ.has(t.k)).concat(ret), lift)
+  const fin = settle(stack.filter(t => !outQ.has(t.k)).concat(ret))
   return new Map(fin.slice(fin.length - ret.length).map(c => [c.k, c]))
 }
 /** A capsule put back lands: it joins the top of the heap. */
 function land(t: Tok) {
-  if (stack.some(x => x.k === t.k) || deep.some(x => x.k === t.k)) return
+  if (stack.some(x => x.k === t.k)) return
   stack.push(t)
   renderHeap(true, new Set([t.k]))
 }
 /** Top of the heap in client coordinates (for capsules that only drop in and vanish: tab switch, leaving). */
 function heapTop(svg: SVGSVGElement, k = 0) {
-  const caps = settle(stack, lift)
-  let q = bedTop(lift)
+  const caps = settle(stack)
+  let q = bedTop()
   let best = -Infinity
   for (const c of caps) if (c.z > best) { best = c.z; q = INK.P(c.x, c.y, c.z + c.r) }
   const m = svg.getScreenCTM()!
@@ -219,6 +225,48 @@ function capEl(col: string, size = 30) {
   document.querySelector('.win')!.appendChild(d)
   return d
 }
+// v0.4.4 · flying capsules dip INTO the box: while a capsule is still (or again) inside the chest it flies under a
+// copy of the chest's front walls + rim (`.fcocc`, z 71, laid exactly over the chest); once it is out of the mouth it
+// flies above everything (z 73). The z switch is baked into each flight's keyframes.
+const Z_IN = 70
+const Z_OUT = 73
+let occ: HTMLElement | null = null
+let occN = 0
+function occOn() {
+  const svg = svgEl.value
+  if (!svg || reduced()) return false
+  if (!occ) {
+    const fr = svg.querySelector(':scope>.chest>.cfront')
+    if (!fr) return false
+    const r = svg.getBoundingClientRect()
+    occ = document.createElement('div')
+    occ.className = 'fcocc'
+    occ.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`
+    occ.innerHTML = `<svg class="ink" viewBox="${svg.getAttribute('viewBox')}" preserveAspectRatio="${svg.getAttribute('preserveAspectRatio') || 'xMidYMid meet'}" style="width:100%;height:100%;overflow:visible"><g class="chest" style="--lw:${CHEST.BIG.lw}">${fr.outerHTML}</g></svg>`
+    document.querySelector('.win')!.appendChild(occ)
+  }
+  occN++
+  return true
+}
+function occOff() { if (--occN <= 0) { occN = 0; occ?.remove(); occ = null } }
+/** The chest's front rim as seen on screen (client px): y of the rim line above client x, or −∞ beside the chest.
+ *  A capsule whose lower half is below this line (and over the chest) is inside the box, behind the front walls. */
+function rimLine() {
+  const svg = svgEl.value
+  if (!svg) return () => -Infinity
+  const m = svg.getScreenCTM()!
+  const C = CHEST.BIG
+  const zt = C.z + C.h
+  const pt = (x: number, y: number) => { const q = INK.P(x, y, zt); return [m.a * q[0] + m.e, m.d * q[1] + m.f] }
+  const a = pt(C.x, C.y + C.d)
+  const b = pt(C.x + C.w, C.y + C.d)
+  const c = pt(C.x + C.w, C.y)
+  return (X: number) => {
+    if (X < a[0] || X > c[0]) return -Infinity
+    const [p, q] = X <= b[0] ? [a, b] : [b, c]
+    return p[1] + (q[1] - p[1]) * (X - p[0]) / ((q[0] - p[0]) || 1)
+  }
+}
 /** Point on a quadratic arc from (dx,dy) to (0,0), apex lifted `lift` px above the higher end. */
 function arcAt(dx: number, dy: number, lift: number, tt: number) {
   const cx = dx * 0.5
@@ -230,16 +278,23 @@ const tr = (p: { x: number, y: number }) => `translate(${p.x.toFixed(1)}px,${p.y
 const S0 = 30
 /** Capsules leave the heap one by one, arc over to their card slots and bloom into the cards. The start point is
  *  measured when each capsule actually leaves (after the chest has been laid out / finished its entrance), from the
- *  capsule as drawn in the heap. */
+ *  capsule as drawn in the heap. A card whose own capsule is not in the heap borrows one from the top (`donor`). */
 function flyOut(delay = 0) {
   const g = grid.value
   if (!g || !svgEl.value) return Promise.resolve()
   const cards = [...g.querySelectorAll<HTMLElement>('.fc')]
   const jobs: Promise<unknown>[] = []
+  const have = new Set(stack.map(t => t.k))
+  const keys = cards.map(c => (c.classList.contains('empty') ? '' : c.dataset.k || ''))
+  const mine = new Set(keys)
+  // donors: from just below the top of the heap (the very top is where returning capsules land)
+  // donors: the highest capsules of the heap (the ones you can see), not this page's own
+  const pool = settle(stack).filter(c => !mine.has(c.k) && !outQ.has(c.k)).sort((A, B) => B.z - A.z).map(c => c.k)
   cards.forEach((c, k) => {
     const d0 = delay + k * FLY.stag
-    if (c.classList.contains('empty')) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + FLY.out * 0.55, fill: 'backwards' }).finished); return }
-    const key = c.dataset.k || ''
+    if (!keys[k]) { jobs.push(anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: d0 + FLY.out * 0.55, fill: 'backwards' }).finished); return }
+    let key = keys[k]
+    if (!have.has(key)) { const dk = pool.shift(); if (dk) { donor.set(key, dk); key = dk } }
     outQ.add(key)
     c.style.opacity = '0'
     jobs.push(sleep(d0).then((): unknown => launchOut(c, key, k)))
@@ -263,34 +318,49 @@ function launchOut(c: HTMLElement, key: string, k: number): Promise<unknown> | u
   const cp = capEl(c.dataset.c || '', S0)
   cp.style.left = `${cx - S0 / 2}px`
   cp.style.top = `${cy - S0 / 2}px`
+  const dip = occOn()
+  const rim = rimLine()
   const lift = 60 + (k % 3) * 14
   const NK = 14
   const kf: Keyframe[] = []
+  let out = !dip
   for (let i = 0; i <= NK; i++) {
     const tt = 1 - (1 - i / NK) ** 2.2 // ease-out baked into the path, so the bloom keeps linear time
-    kf.push({ transform: `${tr(arcAt(at.x - cx, at.y - cy, lift, tt))} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(rot0 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, offset: ARR * (i / NK) })
+    const p = arcAt(at.x - cx, at.y - cy, lift, tt)
+    // inside the box (under the front walls) until its lower half has cleared the rim
+    const rr = S0 / 2 * (s0 + (1.06 - s0) * tt)
+    if (!out && cy + p.y + rr * 0.5 < rim(cx + p.x)) out = true
+    kf.push({ transform: `${tr(p)} scale(${(s0 + (1.06 - s0) * tt).toFixed(3)}) rotate(${(rot0 * (1 - tt)).toFixed(0)}deg)`, opacity: 1, zIndex: out ? Z_OUT : Z_IN, offset: ARR * (i / NK) })
   }
-  kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, offset: 1 })
+  kf.push({ transform: 'translate(0px,0px) scale(1.5) rotate(0deg)', opacity: 0, zIndex: Z_OUT, offset: 1 })
   const fl = anim(cp, kf, { duration: T, easing: 'linear', fill: 'forwards' }).finished
-  fl.then(() => cp.remove(), () => cp.remove())
+  const done = () => { cp.remove(); if (dip) occOff() }
+  fl.then(done, done)
   return Promise.all([card, fl])
 }
 /** Cards (in `layer`, a frozen copy) fold into capsules that arc back into the chest. `turn`: they land on top of
- *  this tab's heap and join it; otherwise (tab switch / leaving) they drop in at the top of the heap and vanish. */
-function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = false) {
+ *  the heap and join it; otherwise (switching to a grid tab / leaving) they drop in at the top of the heap and vanish.
+ *  v0.4.4: the capsule is there from the first frame and starts moving at once (the card shrinks into it over the
+ *  first ~10 %), so the way back never waits for the cards to fade. */
+function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = false, join = 6) {
   const cards = [...layer.querySelectorAll<HTMLElement>('.fc')].reverse()
   const jobs: Promise<unknown>[] = []
-  const FOLD = 0.22 // the card folds into its capsule during the first 22 %
+  const FOLD = 0.1
   const ret: Tok[] = cards.filter(c => !c.classList.contains('empty') && c.dataset.k).map(c => ({ k: c.dataset.k!, c: c.dataset.c || '' }))
-  const spots = turn ? landing(ret) : null
+  // as many as leave on this turn join the heap (the count stays put); any extra drop in and vanish
+  const spots = turn ? landing(ret.slice(0, join)) : null
   const m = svg.getScreenCTM()!
-  cards.forEach((c, k) => {
+  const live = svg === svgEl.value
+  let n = 0
+  cards.forEach((c) => {
     const r = c.getBoundingClientRect()
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
-    const d0 = k * FLY.stag
+    const empty = c.classList.contains('empty')
+    const k = empty ? 0 : n++
+    const d0 = k * FLY.bstag
     jobs.push(anim(c, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.3)', offset: FOLD }, { opacity: 0, transform: 'scale(.3)' }], { duration: dur, delay: d0, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' }).finished)
-    if (c.classList.contains('empty')) return
+    if (empty) return
     const key = c.dataset.k || ''
     const sp = spots?.get(key)
     let M: { x: number, y: number, s: number }
@@ -300,15 +370,23 @@ function flyBack(layer: Element, svg = svgEl.value!, dur = FLY.back, turn = fals
     const cp = capEl(c.dataset.c || '', S0)
     cp.style.left = `${cx - S0 / 2}px`
     cp.style.top = `${cy - S0 / 2}px`
+    const dip = live && occOn()
+    const rim = rimLine()
     const lift = 56 + (k % 3) * 12
-    const kf: Keyframe[] = [{ transform: 'translate(0px,0px) scale(.4)', opacity: 0, offset: 0 }, { transform: 'translate(0px,0px) scale(1.04)', opacity: 1, offset: FOLD }]
-    for (let i = 1; i <= 14; i++) {
-      const tt = (i / 14) ** 1.9 // ease-in baked into the path
-      const off = FOLD + (1 - FOLD) * (i / 14)
-      kf.push({ transform: `${tr(arcAt(M.x - cx, M.y - cy, lift, 1 - tt))} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === 14 && !sp ? 0 : 1, offset: off })
-    }
+    const kf: Keyframe[] = [{ transform: 'translate(0px,0px) scale(.45)', opacity: 0, zIndex: Z_OUT, offset: 0 }]
+    const NK = 16
+    let inside = false
+    const pts: { p: { x: number, y: number }, tt: number }[] = []
+    for (let i = 1; i <= NK; i++) { const tt = (i / NK) ** 1.7; pts.push({ p: arcAt(M.x - cx, M.y - cy, lift, 1 - tt), tt }) }
+    // it dips behind the front wall for the last stretch (once it is about a capsule above its landing spot)
+    pts.forEach(({ p, tt }, i) => {
+      if (dip && !inside && tt > 0.5 && cy + p.y + S0 / 2 * (1.04 + (s1 - 1.04) * tt) * 0.5 > rim(cx + p.x)) inside = true
+      const off = FOLD * 0.4 + (1 - FOLD * 0.4) * (i / (NK - 1)) // pops out of the card at once and is already moving
+      kf.push({ transform: `${tr(p)} scale(${(1.04 + (s1 - 1.04) * tt).toFixed(3)}) rotate(${(240 * tt).toFixed(0)}deg)`, opacity: i === NK - 1 && !sp ? 0 : 1, zIndex: inside ? Z_IN : Z_OUT, offset: off })
+    })
     const a = anim(cp, kf, { duration: dur, delay: d0, easing: 'linear', fill: 'both' })
-    a.finished.then(() => { cp.remove(); if (sp) land({ k: key, c: sp.c }) }, () => cp.remove())
+    const done = () => { cp.remove(); if (dip) occOff() }
+    a.finished.then(() => { done(); if (sp) land({ k: key, c: sp.c }) }, done)
     jobs.push(a.finished)
   })
   return Promise.all(jobs).catch(() => {})
@@ -401,12 +479,19 @@ async function goPage(n: number) {
   const g = ghost()
   page[R.favTab] = n
   await nextTick()
-  // out and back start together: flyOut first registers which capsules are leaving, so the returning ones aim for
-  // the top of the heap as it will be once those are out (and they land last: the way back is slower)
-  const o = flyOut(0)
-  const b = g ? flyBack(g, undefined, FLY.back, true).then(() => g.remove()) : Promise.resolve()
-  await Promise.all([b, o])
+  await swap(g)
   busy = false
+}
+/** Old cards (ghost) go back into the heap and the new page's capsules come out. The way back starts first; flyOut
+ *  is called first only to register which capsules leave (FLY.lead ms later), so the returning ones aim for the top
+ *  of the heap as it will be once those are out — and land last, on top. */
+async function swap(g: HTMLElement | null) {
+  const o = flyOut(FLY.lead)
+  const nOut = cardItems.value.filter(c => c.id).length
+  const b = g ? flyBack(g, undefined, FLY.back, true, nOut).then(() => g.remove()) : Promise.resolve()
+  await Promise.all([b, o])
+  donor.clear()
+  syncCount()
 }
 async function tab(k: FavTab) {
   if (busy || k === R.favTab) return
@@ -417,14 +502,25 @@ async function tab(k: FavTab) {
   R.folder = null
   clearSel()
   await nextTick()
-  buildHeap(caseMode.value)
-  const b = g ? flyBack(g, undefined, 640).then(() => g.remove()) : Promise.resolve()
-  const o = caseMode.value ? flyOut(g ? 140 : 0) : (flatIn(), Promise.resolve())
-  await Promise.all([b, o])
+  // v0.4.4: the heap does not change with the tab (min(all favourites, 24) at rest)
+  if (wasCase && caseMode.value) await swap(g)
+  else {
+    if (caseMode.value && stack.length) {
+      // from a grid tab: the page's capsules are put on top of the heap (a quick fade) and fly out at once
+      const add = pageToks()
+      stack = stack.concat(add)
+      renderHeap(false, undefined, new Set(add.map(t => t.k)))
+    }
+    const b = g ? flyBack(g, undefined, 640).then(() => g.remove()) : Promise.resolve()
+    const o = caseMode.value ? flyOut(g ? 140 : 60) : (flatIn(), Promise.resolve())
+    await Promise.all([b, o])
+    donor.clear()
+    syncCount()
+  }
   busy = false
 }
-// favourites changed outside a flight (like / unlike, import, group switch): rebuild the heap from data
-watch(() => [items.value.join('|'), src.value.join('|'), R.folder], () => { if (!busy) buildHeap(false) })
+// favourites changed outside a flight (like / unlike, import): the resting heap follows the total (≤ 24)
+watch(() => favIds().length, () => { if (!busy) syncCount() })
 function toGacha() { S.swView = 'gacha'; setMode('swipe') }
 function handoff(to: string) {
   toGachaNext = to === 'swipe' && S.swView === 'gacha' && !reduced()

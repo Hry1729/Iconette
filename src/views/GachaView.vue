@@ -6,11 +6,12 @@ import { S } from '../lib/store'
 import { t } from '../lib/i18n'
 import { INFO, shortName } from '../lib/iconify'
 import { SNAP, UI, UICOL, ukl } from '../lib/ui-libs'
-import { toast } from '../lib/actions'
+import { setMode, toast } from '../lib/actions'
 import { gachaFx, swipeApi } from '../lib/swipe'
 import { D, type Item, buildDeck, decide, gachaToday, item, pickIcons, putBack, restart } from '../lib/deck'
 import { bumpChest, chestFx, machFx, pageFx, reduced } from '../lib/fx'
 import { CHEST, GLYPH_GACHA, GM, INK, anim, clamp01, easeIO, easeOut, easeOutBack, sleep, tween } from '../lib/iso'
+import { favIds, heapSVG, restTokens } from '../lib/heap'
 
 // 图标扭蛋机 (v11): a hand-inked isometric gashapon. Turn the knob (drag a full turn, Space, or the button): the body
 // shakes and the capsules jiggle → the exit flap swings out and a capsule rolls onto the tray → it pops up, flies to the
@@ -481,10 +482,45 @@ async function back() {
   busy = false
 }
 
-// v0.4.2: the small chest's heap = the real number of favourites (icons + sets + UI), never more (drawn up to CHEST.MAXPILE).
-// It only shows while the lid is open (keep / arriving from 收藏); a kept capsule joins it after the lid closes.
-const favTotal = computed(() => S.favs.length + S.sets.length + S.uiFav.length)
-watch(favTotal, (n) => { const g = svgEl.value?.querySelector('.chestg .cpile'); if (g) g.innerHTML = CHEST.pileSVG(CHEST.SMALL, n) })
+// v0.4.4: the small chest's heap follows the same rule as 收藏: min(all favourites, 24) capsules, same physics
+// (lib/heap.ts) and sunk into the box. It only shows while the lid is open (keep / arriving from 收藏); a kept capsule
+// joins it after the lid closes.
+const smallPile = () => heapSVG(restTokens(favIds()), CHEST.SMALL)
+watch(() => favIds().length, () => { const g = svgEl.value?.querySelector('.chestg .cpile'); if (g) g.innerHTML = smallPile() })
+
+/** v0.4.4: the small chest is the way to 收藏 — click it (idle or with a card out) → 收藏 with the chest/machine morph.
+ *  A transparent hit box covers the whole chest so clicks between its strokes are not lost. */
+function toFav() {
+  if (busy) return
+  setMode('fav')
+}
+function bindChest() {
+  const g = $('.chestg')
+  const ch = g.querySelector(':scope>.chest') as SVGGElement | null
+  if (!ch) return
+  const b = ch.getBBox()
+  const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  hit.setAttribute('class', 'chit')
+  ;[['x', b.x - 2], ['y', b.y - 3], ['width', b.width + 4], ['height', b.height + 5]].forEach(([k, v]) => hit.setAttribute(k as string, INK.f(v as number) as unknown as string))
+  g.insertBefore(hit, g.firstChild)
+  const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title')
+  tip.textContent = t('chestTip')
+  g.appendChild(tip)
+  g.addEventListener('click', toFav)
+  // hover: the lid peeks open a little (only when nothing else is moving the lid)
+  const lid = g.querySelector('.clid') as SVGGElement
+  let peek = 0
+  let seq = 0
+  const to = (d: number) => {
+    if (busy || reduced()) return
+    const id = ++seq
+    const a = peek
+    void tween(180, (e) => { if (id !== seq || busy) return; peek = a + (d - a) * e; CHEST.setLid(lid, CHEST.SMALL, peek) }, easeOut)
+  }
+  g.addEventListener('pointerenter', () => to(20))
+  g.addEventListener('pointerleave', () => to(0))
+  g.addEventListener('pointerdown', () => { seq++; peek = 0 })
+}
 
 const label = (it: Item) => it.k === 'set' ? shortName(it.v) : it.k === 'comp' ? `${UI(it.v.split('/')[0]).name} ${ukl(it.v.split('/')[1])}` : UI(it.v).name
 const kindK = (it: Item) => t(it.k === 'set' ? 'kSet' : it.k === 'comp' ? 'kComp' : 'kLib')
@@ -492,7 +528,8 @@ const dotOf = (it: Item) => it.k === 'set' ? '' : UICOL[it.v.split('/')[0]] || '
 
 onMounted(() => {
   svg = svgEl.value!
-  svg.innerHTML = GM.scene({ chest: true, pile: favTotal.value })
+  svg.innerHTML = GM.scene({ chest: true, pile: smallPile() })
+  bindChest()
   layout()
   ro = new ResizeObserver(() => layout())
   ro.observe(stage.value!)
@@ -502,7 +539,7 @@ onMounted(() => {
   swipeApi.back = back
   pageFx.exit.swipe = exit
   pageFx.handoff.swipe = handoff
-  W.__gacha = { phase: '', flipT: 0, get moved() { return aside.value }, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
+  W.__gacha = { phase: '', flipT: 0, toFav, get moved() { return aside.value }, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
   if (!D.list.length) buildDeck()
   const flip = gachaFx.flip
   gachaFx.flip = null

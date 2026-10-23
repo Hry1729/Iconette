@@ -135,3 +135,13 @@
 .modes .tgi:has(.lic){width:15px;height:15px}
 .vtog .tgi:has(.lic),.btn .tgi:has(.lic){width:15px;height:15px}
 @media (prefers-reduced-motion: reduce){.minig:hover .pile{animation:none}.fav11 .fmach:hover .shk{transform:none}}
+/* v0.4.4 · 收藏：飞行中的胶囊在箱内时从这层「前壁 + 箱沿」下面穿过（z 70 < 71 < 73） */
+.fcocc{position:fixed;z-index:71;pointer-events:none}
+/* v0.4.4 · 扭蛋页的小收纳盒 = 去收藏的入口（点击 → 收藏，带变形过渡） */
+.g11 .gsvg .chestg{cursor:pointer}
+.g11 .gsvg .chestg .chit{fill:transparent;stroke:none;pointer-events:all}
+.g11 .gsvg .chestg>.chest{transition:transform .18s cubic-bezier(.3,1.4,.5,1)}
+.g11 .gsvg .chestg:hover>.chest{transform:translateY(-1.6px)}
+.g11 .gsvg .chestg:hover .c-red{fill:#f0595e}
+.g11 .gsvg .chestg:active>.chest{transform:translateY(-.4px) scale(.985);transform-box:fill-box;transform-origin:50% 100%}
+@media (prefers-reduced-motion: reduce){.g11 .gsvg .chestg>.chest{transition:none}}
