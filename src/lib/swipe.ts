@@ -4,6 +4,10 @@ export const swipeApi = {
   commit: (_a: SwipeAct) => {},
   undo: () => {},
   shuffle: () => {},
+  /** Gacha: pull / keep / put back. */
+  space: () => {},
+  keep: () => {},
+  back: () => {},
 }
 
 export const OKLIC = /^(MIT|ISC|Apache|CC0|CC-BY-[0-9]|CC-BY-SA|MPL|BSD|OFL|Unlicense)/i
@@ -22,3 +26,6 @@ export function rng(a: number) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296
   }
 }
+
+/** Bridge so ⌘K / "/" can focus whichever in-page search box is mounted. */
+export const focusApi = { focus: () => {} }
