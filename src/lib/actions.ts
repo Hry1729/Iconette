@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { INFO, load, shortName, svg } from './iconify'
-import { flyToChest, lastPressed } from './fx'
+import { chestFx, flyToChest, lastPressed, pageFx } from './fx'
+import { gachaFx } from './swipe'
 import { code, fmtLabel, pngBlob } from './format'
 import { copyPng, copyText } from './native'
 import { R, S, type Mode, addRecent, toggleFav, toggleSet, toggleUI } from './store'
@@ -15,25 +16,21 @@ export function toast(msg: string, icon = 'lucide:check') {
   tt = setTimeout(() => { toastState.show = false }, 1300)
 }
 
-/** A view can delay leaving it to finish an animation (收藏: the capsule case closes first). */
-export const leaveHook: { fav: null | (() => Promise<void>) } = { fav: null }
-let leaving = false
+/** Switch page. Never waits for the old page: it records shared-element origins, snapshots the old page's exit
+ * (played by App on the frozen layer) and switches right away. */
 export function setMode(m: Mode, after?: () => void) {
-  const apply = () => {
-    R.mode = m
-    R.sel = null
-    R.q = ''
-    R.set = null
-    R.pop = null
-    after?.()
+  const from = R.mode
+  if (m !== from) {
+    pageFx.handoff[from]?.(m)
+    pageFx.pending = { fn: pageFx.exit[from] || null, to: m }
+    pageFx.selfEnter = m === 'fav' || (m === 'swipe' && S.swView === 'gacha' && !!(chestFx.from || gachaFx.flip))
   }
-  if (R.mode === 'fav' && m !== 'fav' && leaveHook.fav) {
-    if (leaving) return
-    leaving = true
-    leaveHook.fav().catch(() => {}).finally(() => { leaving = false; apply() })
-    return
-  }
-  apply()
+  R.mode = m
+  R.sel = null
+  R.q = ''
+  R.set = null
+  R.pop = null
+  after?.()
 }
 
 export async function select(id: string, scroll = false) {

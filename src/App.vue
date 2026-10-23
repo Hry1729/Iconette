@@ -21,6 +21,8 @@ import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
 import { accelFromEvent, autostartEnabled, inTauri, isMac, quickAccel, quickKey, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
 import { focusApi, swipeApi } from './lib/swipe'
+import { pageFx, reduced } from './lib/fx'
+import { anim } from './lib/iso'
 
 const view = computed(() => R.mode === 'search' ? SearchView : R.mode === 'fav' ? FavView : R.mode === 'sets' ? SetsView : SwipeView)
 const COLORS = [null, '#1c1c1e', '#ffffff', '#e5484d', '#f5a524', '#30a46c', '#3e63dd', '#8e4ec6']
@@ -47,6 +49,28 @@ async function toggleAutostart() {
 watchEffect(() => { setCloseToTray(S.closeToTray) })
 const updLabel = computed(() => ({ checking: t('updChecking'), latest: t('updLatest'), avail: `v${upd.ver}`, installing: `${upd.pct}%`, error: t('updFail') } as Record<string, string>)[upd.state] || `v${upd.cur}`)
 watchEffect(() => { setTrayLabels([t('showMain'), t('quick'), t('quitApp')]) })
+
+// ---- page switches: no out-in; the old page becomes a frozen layer that plays its exit while the new page is live
+function onLeave(el: Element, done: () => void) {
+  const e = el as HTMLElement
+  const win = document.querySelector('.win')!
+  const r = e.getBoundingClientRect()
+  const wr = win.getBoundingClientRect()
+  e.classList.add('leaving')
+  e.style.cssText += `;position:absolute;left:${r.left - wr.left}px;top:${r.top - wr.top}px;width:${r.width}px;height:${r.height}px;flex:none;margin:0`
+  const p = pageFx.pending
+  pageFx.pending = null
+  const job = reduced()
+    ? Promise.resolve()
+    : p?.fn ? p.fn(e, p.to) : anim(e, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-4px)' }], { duration: 170, easing: 'ease-in', fill: 'forwards' }).finished
+  Promise.resolve(job).catch(() => {}).finally(done)
+}
+function onEnter(el: Element, done: () => void) {
+  const self = pageFx.selfEnter
+  pageFx.selfEnter = false
+  if (self || reduced()) { done(); return }
+  anim(el as HTMLElement, [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.7,.3,1)' }).finished.catch(() => {}).finally(done)
+}
 
 /** Arrow-key navigation over icon tiles by geometry (works across grouped grids). */
 function nav(key: string) {
@@ -120,7 +144,9 @@ onMounted(async () => {
 <template>
   <div class="win" :data-mode="R.mode" :style="{ '--icolor': S.color || 'var(--ink)' }">
     <TitleBar />
-    <component :is="view" @copy="(id: string) => copy(id)" @enter="R.list[0] && select(R.list[0], true)" />
+    <Transition :css="false" @enter="onEnter" @leave="onLeave">
+      <component :is="view" :key="R.mode" @copy="(id: string) => copy(id)" @enter="R.list[0] && select(R.list[0], true)" />
+    </Transition>
 
     <Pop id="color" :w="228">
       <div class="lbl">{{ t('iconColor') }}</div>
@@ -158,5 +184,6 @@ onMounted(async () => {
     <Pop id="folder" :w="210"><FolderPop /></Pop>
     <Toast />
     <UpdateTip />
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><radialGradient id="inkGlow"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".45" stop-color="#fff" stop-opacity=".32"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><pattern id="inkGrain" patternUnits="userSpaceOnUse" width="14" height="14"><g fill="#7a7a7a"><circle cx="4.53" cy="2.11" r="0.24"/><circle cx="1.01" cy="7.50" r="0.19"/><circle cx="0.81" cy="7.10" r="0.13"/><circle cx="6.07" cy="0.98" r="0.14"/><circle cx="5.94" cy="11.58" r="0.14"/><circle cx="3.13" cy="8.78" r="0.29"/><circle cx="8.08" cy="5.55" r="0.30"/><circle cx="0.65" cy="12.02" r="0.17"/><circle cx="2.02" cy="1.65" r="0.18"/><circle cx="11.43" cy="2.53" r="0.22"/><circle cx="8.94" cy="5.21" r="0.22"/><circle cx="0.88" cy="0.83" r="0.16"/><circle cx="9.53" cy="5.99" r="0.18"/><circle cx="8.20" cy="6.34" r="0.17"/><circle cx="11.12" cy="9.79" r="0.16"/><circle cx="8.04" cy="7.35" r="0.28"/><circle cx="10.21" cy="4.03" r="0.30"/><circle cx="1.65" cy="5.85" r="0.26"/><circle cx="2.13" cy="6.85" r="0.13"/><circle cx="9.36" cy="10.70" r="0.22"/><circle cx="12.26" cy="4.39" r="0.25"/><circle cx="8.32" cy="8.12" r="0.20"/><circle cx="11.76" cy="13.23" r="0.21"/><circle cx="9.30" cy="0.85" r="0.25"/><circle cx="9.06" cy="13.90" r="0.27"/><circle cx="3.98" cy="5.40" r="0.24"/><circle cx="0.32" cy="6.46" r="0.15"/><circle cx="1.64" cy="0.83" r="0.26"/><circle cx="1.81" cy="3.47" r="0.19"/><circle cx="12.20" cy="1.13" r="0.20"/><circle cx="7.69" cy="12.37" r="0.27"/><circle cx="12.10" cy="3.90" r="0.19"/><circle cx="5.02" cy="12.38" r="0.29"/><circle cx="2.11" cy="2.47" r="0.16"/><circle cx="3.27" cy="6.79" r="0.23"/><circle cx="3.68" cy="0.06" r="0.20"/><circle cx="5.17" cy="7.93" r="0.29"/><circle cx="9.67" cy="7.22" r="0.23"/><circle cx="9.47" cy="0.76" r="0.28"/><circle cx="10.92" cy="12.24" r="0.26"/><circle cx="5.49" cy="5.59" r="0.14"/><circle cx="8.88" cy="0.87" r="0.13"/><circle cx="2.92" cy="2.27" r="0.18"/><circle cx="0.74" cy="0.00" r="0.15"/><circle cx="1.42" cy="5.09" r="0.12"/><circle cx="12.24" cy="8.60" r="0.15"/></g></pattern></defs></svg>
   </div>
 </template>

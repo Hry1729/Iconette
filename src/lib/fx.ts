@@ -2,11 +2,11 @@
 // and popovers anchored to the element that opened them.
 import { reactive } from 'vue'
 import { R, S } from './store'
-import { ISO } from './iso'
+import { INK } from './iso'
 
 export const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** Badge state of the title-bar chest; `tick` bumps to replay the digit animation. */
+/** Title-bar chest: `tick` bumps whenever something lands in it (no count badge since v0.4). */
 export const chest = reactive({ tick: 0 })
 export const chestCount = () => S.favs.length + S.sets.length + S.uiFav.length
 
@@ -29,7 +29,7 @@ export function bumpChest() {
 
 /**
  * Save flight: the icon (`html`, an svg string) shrinks into a small red capsule at `from`,
- * which arcs into the title-bar capsule case; then the case pops its lid and the badge ticks.
+ * which arcs into the title-bar chest; then the chest pops its lid.
  */
 export function flyToChest(from: Element | null | undefined, html: string, o: { size?: number, dur?: number } = {}): Promise<void> {
   const to = caseGlyph()
@@ -41,7 +41,7 @@ export function flyToChest(from: Element | null | undefined, html: string, o: { 
   const d = document.createElement('div')
   d.className = 'fly'
   d.style.cssText = `width:${sz}px;height:${sz}px;font-size:${sz}px`
-  d.innerHTML = `<span class="fi">${html || ''}</span><svg class="iso10 fcap" viewBox="-${R} -${R} ${2 * R} ${2 * R}">${ISO.capsule(R * 0.92, 'r', '')}</svg>`
+  d.innerHTML = `<span class="fi">${html || ''}</span><svg class="ink fcap" viewBox="-${R} -${R} ${2 * R} ${2 * R}" style="overflow:visible">${INK.capsule(R * 0.92, '#e5484d', { th: -30, m: 0.36, lw: 0.9 })}</svg>`
   document.querySelector('.win')!.appendChild(d)
   const x0 = a.left + a.width / 2 - sz / 2
   const y0 = a.top + a.height / 2 - sz / 2
@@ -87,3 +87,20 @@ export function openPop(id: string, e?: Event) {
   else R.popAt = null
   R.pop = id
 }
+
+/**
+ * Page switches (v0.4): the new page mounts in the same frame; the old one is frozen into a `.body.leaving` layer that
+ * plays its own exit and is removed afterwards, so an exit never blocks a switch. A view registers `exit` (and
+ * optionally `handoff`, which records shared-element origins) under its mode while mounted; setMode snapshots them
+ * before changing the mode, because the view's unmount hooks run before the leave transition starts.
+ */
+export type ExitFn = (layer: HTMLElement, to: string) => Promise<unknown>
+export const pageFx: {
+  exit: Record<string, ExitFn | null>
+  handoff: Record<string, ((to: string) => void) | null>
+  pending: { fn: ExitFn | null, to: string } | null
+  selfEnter: boolean
+} = { exit: {}, handoff: {}, pending: null, selfEnter: false }
+/** Shared-element origins (client rects) written before the switch, read and cleared by the new view on mount. */
+export const chestFx: { from: DOMRect | null } = { from: null }
+export const machFx: { from: DOMRect | null } = { from: null }
