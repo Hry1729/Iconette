@@ -67,7 +67,9 @@
 .ink .c-red{fill:#e5484d;stroke-width:calc(var(--lw) * .7px)}
 .ink .c-key{fill:#5a1a1d;stroke:none}
 .ink .c-glow{fill:url(#inkGlow);stroke:none}
-.ink .pc,.ink .pcj{will-change:transform}
+/* v0.4.7: no will-change on the globe capsules. It promoted every capsule to its own composited layer, and Chrome/WebKit keep
+   a will-change:transform layer at the raster scale it was first painted at — after the 收藏→扭蛋 morph (machine scaled up from
+   the mini size) the capsules stayed rasterised small and were upscaled (blurry). The jiggle is SVG attribute transforms anyway. */
 .ink .grain{fill:url(#inkGrain);stroke:none;opacity:.42;pointer-events:none}
 [data-theme="dark"] .ink .grain{opacity:.4}
 .cap .dbg[data-go]{width:auto;padding:0 9px;font-size:11.5px;box-shadow:0 0 0 1px rgba(0,0,0,.1);margin-right:4px}
@@ -96,7 +98,10 @@
 .g11 .gempty{font-size:11px;color:var(--muted);padding-left:4px}
 @keyframes gwig{0%,78%,100%{transform:none}81%{transform:rotate(-5deg) translateX(1px)}84%{transform:rotate(4.5deg)}87%{transform:rotate(-3.5deg)}90%{transform:rotate(2.5deg)}93%{transform:rotate(-1deg)}96%{transform:none}}
 .g101.g11 .gcard{top:max(34px,calc(var(--gcy,200px) - 150px))}
-@media (prefers-reduced-motion: reduce){.g101.g11 .gstage{transition:none}.g11 .gbtn{animation:none}.g11 .gknob{transition:none}}
+/* v0.4.7 · 收下/放回后机器留在左边，「再扭一下」出现在结果卡的位置（卡片槽正中），样式与「扭一下」相同 */
+.g11 .gagain{z-index:4;align-items:center;margin-top:0;transform:translate(-50%,-50%);transition:opacity .26s ease .12s,transform .3s cubic-bezier(.2,.8,.3,1.2) .12s}
+.g11 .gagain.off{opacity:0;transform:translate(-50%,-50%) scale(.9);transition:opacity .16s ease,transform .16s ease}
+@media (prefers-reduced-motion: reduce){.g101.g11 .gstage{transition:none}.g11 .gbtn{animation:none}.g11 .gknob{transition:none}.g11 .gagain,.g11 .gagain.off{transition:none}}
 .g11 .gsvg .knobg{cursor:grab}
 .g11 .gsvg .knobg:active{cursor:grabbing}
 .flycap .ink{display:block;width:100%;height:100%}

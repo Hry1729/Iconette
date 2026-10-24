@@ -17,7 +17,8 @@ import { capD, favIds, heapSVG, restTokens } from '../lib/heap'
 // shakes and the capsules jiggle → the exit flap swings out and a capsule rolls onto the tray → it pops up, flies to the
 // card's top-right corner and splits open into the card; the opened capsule stays perched there until the card is
 // kept / put back (v0.4.1). Idle: the machine is centred with the 扭一下 button beside its knob; a turn slides the
-// machine (scaled down) to the left for the card and it returns to the centre once the card is dealt with. Keep → it hops into the small chest beside the machine; put back → it flies
+// machine (scaled down) to the left for the card. v0.4.7: after 收下 / 放回 the machine stays on the left and a
+// 「再扭一下」 button (same look) takes the card's place; only a fresh entry (no result yet) is centred. Keep → it hops into the small chest beside the machine; put back → it flies
 // back into the globe. Shared elements: home mini machine → this machine (FLIP); 收藏 ↔ here (chest + machine).
 const root = ref<HTMLElement>()
 const svgEl = ref<SVGSVGElement>()
@@ -25,7 +26,7 @@ const card = ref<HTMLElement>()
 const stage = ref<HTMLElement>()
 /** v0.4.1: idle = machine centred; a turn slides it (scaled down) to the left to make room for the card. */
 const aside = ref(false)
-const lay = ref({ bx: 0, by: 0, cy: 0 })
+const lay = ref({ bx: 0, by: 0, cy: 0, ax: 0, ay: 0 })
 const phase = ref<'idle' | 'busy' | 'reveal'>('idle')
 const ang = ref(0)
 const cur = ref<Item | null>(null)
@@ -98,7 +99,7 @@ function layout() {
   svg.setAttribute('viewBox', [MC.x - W / 2 / s, MC.y - cy / s, W / s, H / s].map(INK.f).join(' '))
   // the 扭一下 button sits right next to the knob (knob centre ≈ scene (19, 2.6); its right edge ≈ x 27)
   const kq = INK.P(GM.W + 2, GM.DP - GM.DIAL.u, GM.BH - GM.DIAL.v)
-  lay.value = { bx: W / 2 + (kq[0] + 12 - MC.x) * s, by: cy + (kq[1] - MC.y) * s, cy }
+  lay.value = { ...lay.value, bx: W / 2 + (kq[0] + 12 - MC.x) * s, by: cy + (kq[1] - MC.y) * s, cy }
   // v0.4.3 moved layout: [machine + small chest] gap [card] is centred as one group with equal outer margins
   // (right margin ≥ 32 px); the card is vertically centred on the machine's visual centre, clear of the header.
   // horizontal extent from the drawn shadow/machine/chest; clamped to the design range (scene x −40…80) in case a
@@ -119,6 +120,9 @@ function layout() {
   // visual centre of the machine after the move (globe top −84 … base +47 in scene units ≈ MC.y)
   const mvy = cy + (-18.5 - MC.y) * s * MK
   cardBox = { l: W - side - cw, w: cw, cy: mvy, H }
+  // v0.4.7: 「再扭一下」 sits in the middle of the card slot
+  lay.value.ax = cardBox.l + cw / 2
+  lay.value.ay = Math.max(CARD_TOP + 18, Math.min(mvy, H - 30))
   placeCard()
   if (big && phase.value === 'reveal') parkCap()
 }
@@ -455,7 +459,6 @@ async function keep() {
   buildDeck()
   setPhase('')
   phase.value = 'idle'
-  aside.value = false
   busy = false
 }
 /** Put back: the capsule flies back to the top of the globe, the machine shakes once. */
@@ -478,7 +481,6 @@ async function back() {
   cur.value = null
   toast(t('putBackMsg'), 'lucide:undo-2')
   phase.value = 'idle'
-  aside.value = false
   busy = false
 }
 
@@ -539,7 +541,7 @@ onMounted(() => {
   swipeApi.back = back
   pageFx.exit.swipe = exit
   pageFx.handoff.swipe = handoff
-  W.__gacha = { phase: '', flipT: 0, toFav, get moved() { return aside.value }, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
+  W.__gacha = { phase: '', flipT: 0, toFav, get again() { return aside.value && phase.value === 'idle' && !cur.value }, get moved() { return aside.value }, turn, keep, back, get busy() { return busy }, get revealed() { return phase.value === 'reveal' } }
   if (!D.list.length) buildDeck()
   const flip = gachaFx.flip
   gachaFx.flip = null
@@ -572,6 +574,13 @@ onBeforeUnmount(() => {
           <small class="gempty">{{ t('gEmpty') }}</small>
         </template>
       </div>
+    </div>
+    <div class="gknob gagain" :class="{ off: !aside || phase !== 'idle' || !!cur }" :style="{ left: `${lay.ax}px`, top: `${lay.ay}px` }">
+      <button v-if="D.list.length" class="gbtn" :title="t('gName')" @click="turn"><span class="tgi" v-html="GLYPH_GACHA" />{{ t('pullAgain') }}<kbd>Space</kbd></button>
+      <template v-else>
+        <button class="gbtn sec" :title="t('gEmpty')" @click="restart">{{ t('restart') }}</button>
+        <small class="gempty">{{ t('gEmpty') }}</small>
+      </template>
     </div>
     <div class="rdout">
       <span>{{ t('stock') }} <b>{{ stats.stock }}</b> {{ t('mei') }}</span>
