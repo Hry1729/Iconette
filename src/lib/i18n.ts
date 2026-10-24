@@ -106,6 +106,20 @@ Object.assign(L.en, {
   updCheck: 'Check for updates', updChecking: 'Checking…', updLatest: 'Up to date', updFail: 'Check failed', updAvail: 'v{v} is available', updNow: 'Update', updGet: 'Download', updLater: 'Later', updInstalling: 'Updating {p}%',
 })
 
+// v0.4.7: self-update (download + install) and its error texts.
+Object.assign(L.zh, {
+  pullAgain: '再扭一下', updDl: '正在下载 v{v}', updDlBtn: '{p}%', updInst: '正在安装 v{v}，马上重启…', updCancel: '取消', updRetry: '重试', updBrowser: '在浏览器中打开',
+  updManual: '已打开安装包，把 Iconette 拖进「应用程序」即可',
+  updE_timeout: '连接 GitHub 超时，网络可能需要代理', updE_connect: '连不上 GitHub，请检查网络或代理', updE_rate: 'GitHub 请求太频繁，稍后再试',
+  updE_noasset: '没找到适合本机的安装包', updE_http: '下载失败（HTTP {c}）', updE_install: '安装没有完成', updE_io: '无法写入临时文件', updE_open: '无法打开浏览器', updE_other: '更新失败',
+})
+Object.assign(L.en, {
+  pullAgain: 'Turn again', updDl: 'Downloading v{v}', updDlBtn: '{p}%', updInst: 'Installing v{v}, restarting…', updCancel: 'Cancel', updRetry: 'Retry', updBrowser: 'Open in browser',
+  updManual: 'Installer opened: drag Iconette into Applications',
+  updE_timeout: 'GitHub timed out. You may need a proxy', updE_connect: 'Can’t reach GitHub. Check your network or proxy', updE_rate: 'Too many GitHub requests. Try again later',
+  updE_noasset: 'No installer for this computer', updE_http: 'Download failed (HTTP {c})', updE_install: 'Install didn’t finish', updE_io: 'Can’t write the temp file', updE_open: 'Can’t open the browser', updE_other: 'Update failed',
+})
+
 // v0.4 (v11 design): hand-inked gashapon with a knob; the favourites page is the idea chest again.
 Object.assign(L.zh, {
   chestT: '收藏', chestTip: '收藏', cFig: '灵感宝箱', pull: '扭一下', crank: '旋钮', keptMsg: '{n} 已收进宝箱', favd: '已收进宝箱', likedSet: '{n} 已收进宝箱',

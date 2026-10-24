@@ -1818,6 +1818,8 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "png",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -1831,6 +1833,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tokio",
 ]
 
 [[package]]

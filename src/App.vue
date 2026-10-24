@@ -47,7 +47,7 @@ async function toggleAutostart() {
   catch (e) { console.warn(e) }
 }
 watchEffect(() => { setCloseToTray(S.closeToTray) })
-const updLabel = computed(() => ({ checking: t('updChecking'), latest: t('updLatest'), avail: `v${upd.ver}`, installing: `${upd.pct}%`, error: t('updFail') } as Record<string, string>)[upd.state] || `v${upd.cur}`)
+const updLabel = computed(() => ({ checking: t('updChecking'), latest: t('updLatest'), avail: `v${upd.ver}`, downloading: `${upd.pct}%`, installing: '…', manual: `v${upd.ver}`, failed: t('updE_other'), error: t('updFail') } as Record<string, string>)[upd.state] || `v${upd.cur}`)
 watchEffect(() => { setTrayLabels([t('showMain'), t('quick'), t('quitApp')]) })
 
 // ---- page switches: no out-in; the old page becomes a frozen layer that plays its exit while the new page is live
@@ -178,7 +178,7 @@ onMounted(async () => {
       <hr>
       <FavIO />
       <hr>
-      <button class="it" @click="upd.state === 'avail' ? installUpdate() : checkUpdate()"><UiIcon name="lucide:refresh-cw" />{{ t('updCheck') }}<span class="r" :class="{ upd: upd.state === 'avail' }">{{ updLabel }}</span></button>
+      <button class="it" @click="['avail', 'failed', 'manual'].includes(upd.state) ? installUpdate() : checkUpdate()"><UiIcon name="lucide:refresh-cw" />{{ t('updCheck') }}<span class="r" :class="{ upd: ['avail', 'downloading', 'installing'].includes(upd.state) }">{{ updLabel }}</span></button>
     </Pop>
     <Pop id="cmp" :w="300"><OtherPop /></Pop>
     <Pop id="folder" :w="210"><FolderPop /></Pop>

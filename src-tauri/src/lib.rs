@@ -1,4 +1,5 @@
 mod clipfile;
+mod selfupdate;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -362,7 +363,11 @@ pub fn run() {
             fav_save,
             fav_load,
             drag_prepare,
-            copy_png_file
+            copy_png_file,
+            selfupdate::upd_latest,
+            selfupdate::upd_download,
+            selfupdate::upd_install,
+            selfupdate::upd_cancel
         ])
         .setup(|app| {
             let h = app.handle();

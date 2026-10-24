@@ -18,6 +18,7 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-write-image",
     "opener:allow-open-url",
+    "opener:allow-default-urls",
     "core:window:allow-hide",
     "core:window:allow-center",
     "core:window:allow-is-visible",
