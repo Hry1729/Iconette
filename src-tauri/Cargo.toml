@@ -1,6 +1,6 @@
 [package]
 name = "iconette"
-version = "0.4.6"
+version = "0.4.7"
 description = "Icônette: a tiny icon & UI component finder"
 authors = ["Hry1729"]
 edition = "2021"
