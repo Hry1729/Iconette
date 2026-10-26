@@ -3,8 +3,8 @@ import UiIcon from './UiIcon.vue'
 import Logo from './Logo.vue'
 import { R, type Mode } from '../lib/store'
 import { t } from '../lib/i18n'
-import { setMode } from '../lib/actions'
-import { inTauri, isMac, modKey, win } from '../lib/native'
+import { setMode, toast } from '../lib/actions'
+import { inTauri, isMac, modKey, openUrl, win } from '../lib/native'
 import { openPop } from '../lib/fx'
 import { GLYPH_CASE, GLYPH_GACHA } from '../lib/iso'
 
@@ -16,11 +16,19 @@ const showWinControls = inTauri && !isMac
 const wmin = async () => (await win()).minimize()
 const wmax = async () => (await win()).toggleMaximize()
 const wclose = async () => (await win()).close()
+// v0.4.8: repo link in the top-left corner (after the macOS traffic lights). A no-drag control like the other buttons.
+const REPO_URL = 'https://github.com/Hry1729/icones-desktop'
+async function openRepo(ev: MouseEvent) {
+  (ev.currentTarget as HTMLElement).blur()
+  try { await openUrl(REPO_URL) }
+  catch (e) { console.warn('openUrl', e); toast(t('ghOpenFail'), 'lucide:x') }
+}
 </script>
 
 <template>
   <div class="tb" :class="{ mac }" data-tauri-drag-region>
     <div v-if="mac" class="lights-gap" data-tauri-drag-region />
+    <button class="tbtn gh" :title="t('ghRepo')" :aria-label="t('ghRepo')" @click="openRepo"><UiIcon name="tabler:brand-github" /></button>
     <div class="brand" data-tauri-drag-region>
       <Logo data-tauri-drag-region /><b data-tauri-drag-region>Icônette</b>
     </div>

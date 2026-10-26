@@ -131,3 +131,7 @@ Object.assign(L.en, {
   gHint: 'Drag the knob a full turn · <kbd>Space</kbd> turn · <kbd>→</kbd> keep · <kbd>←</kbd> put back', prevPage: 'Previous page ←', nextPage: 'Next page →', dChest: 'My chest', movedOut: 'Removed from chest',
   chestDeckNone: 'No saved sets or libraries yet', toGacha: 'Gacha machine',
 })
+
+// v0.4.8: GitHub repo button in the title bar.
+Object.assign(L.zh, { ghRepo: 'GitHub 仓库', ghOpenFail: '无法打开浏览器' })
+Object.assign(L.en, { ghRepo: 'GitHub repository', ghOpenFail: 'Couldn’t open the browser' })
