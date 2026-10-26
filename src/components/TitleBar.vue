@@ -16,7 +16,8 @@ const showWinControls = inTauri && !isMac
 const wmin = async () => (await win()).minimize()
 const wmax = async () => (await win()).toggleMaximize()
 const wclose = async () => (await win()).close()
-// v0.4.8: repo link in the top-left corner (after the macOS traffic lights). A no-drag control like the other buttons.
+// v0.4.9: repo link on the right, right after the ⋯ menu (before the window controls on Windows/Linux; last item on macOS,
+// whose traffic lights stay on the left). A no-drag control like the other buttons.
 const REPO_URL = 'https://github.com/Hry1729/icones-desktop'
 async function openRepo(ev: MouseEvent) {
   (ev.currentTarget as HTMLElement).blur()
@@ -28,7 +29,6 @@ async function openRepo(ev: MouseEvent) {
 <template>
   <div class="tb" :class="{ mac }" data-tauri-drag-region>
     <div v-if="mac" class="lights-gap" data-tauri-drag-region />
-    <button class="tbtn gh" :title="t('ghRepo')" :aria-label="t('ghRepo')" @click="openRepo"><UiIcon name="tabler:brand-github" /></button>
     <div class="brand" data-tauri-drag-region>
       <Logo data-tauri-drag-region /><b data-tauri-drag-region>Icônette</b>
     </div>
@@ -43,6 +43,7 @@ async function openRepo(ev: MouseEvent) {
       </button>
     </div>
     <button class="tbtn" :class="{ on: R.pop === 'menu' }" @click.stop="openPop('menu', $event)"><UiIcon name="lucide:ellipsis" /></button>
+    <button class="tbtn ghbtn" :title="t('ghRepo')" :aria-label="t('ghRepo')" @click="openRepo"><UiIcon name="tabler:brand-github" /></button>
     <div v-if="showWinControls" class="wc">
       <button :title="t('minimize')" @click="wmin"><UiIcon name="lucide:minus" /></button>
       <button :title="t('maximize')" class="sq" @click="wmax"><UiIcon name="lucide:square" /></button>
