@@ -1811,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "iconette"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "clipboard-win",
  "objc2",
