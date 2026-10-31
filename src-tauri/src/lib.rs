@@ -1,4 +1,5 @@
 mod clipfile;
+mod iconpack;
 mod selfupdate;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -367,7 +368,13 @@ pub fn run() {
             selfupdate::upd_latest,
             selfupdate::upd_download,
             selfupdate::upd_install,
-            selfupdate::upd_cancel
+            selfupdate::upd_cancel,
+            iconpack::iconpack_list,
+            iconpack::iconpack_path,
+            iconpack::iconpack_download,
+            iconpack::iconpack_drop,
+            iconpack::iconpack_cancel,
+            iconpack::iconpack_reset
         ])
         .setup(|app| {
             let h = app.handle();

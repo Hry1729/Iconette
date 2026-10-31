@@ -135,3 +135,39 @@ Object.assign(L.en, {
 // v0.4.8: GitHub repo button in the title bar.
 Object.assign(L.zh, { ghRepo: 'GitHub 仓库', ghOpenFail: '无法打开浏览器' })
 Object.assign(L.en, { ghRepo: 'GitHub repository', ghOpenFail: 'Couldn’t open the browser' })
+
+// 离线图标包：首次询问是否下载全部图标。
+Object.assign(L.zh, {
+  packTitle: '是否下载全部图标',
+  packBody: '列表和每套的样例已经在应用里，离线也能先看。完整图标共 {n} 套：压缩包约 {zip}，图标 JSON 约占磁盘 {disk}（整包解压约 {full}）。文件会放在本机应用数据目录，之后优先读本地。',
+  packHint: '先不下载的话，打开某个图标集时再单独获取。',
+  packYes: '下载全部',
+  packNo: '暂时不用',
+  packGo: '正在下载 {name}（{a} / {b}）',
+  packDisk: '已写入约 {got} / {all}',
+  packDone: '全部图标已保存在本机，之后优先读本地。',
+  packResume: '本地还缺 {n} 个图标集。要继续下载吗？',
+  packMenu: '下载全部图标',
+  packHave: '全部图标已在本地',
+  packFail: '{n} 个图标集没有下完，可以稍后继续',
+  packCancel: '取消',
+  packLater: '稍后',
+  packOk: '好',
+})
+Object.assign(L.en, {
+  packTitle: 'Download every icon?',
+  packBody: 'The set list and a few samples already work offline. The full library is {n} sets: about {zip} compressed, about {disk} of icon JSON on disk (about {full} unpacked). Files stay in this app’s data folder and are preferred after that.',
+  packHint: 'If you skip this, a set is downloaded the first time you open it.',
+  packYes: 'Download all',
+  packNo: 'Not now',
+  packGo: 'Downloading {name} ({a} / {b})',
+  packDisk: 'About {got} / {all} written',
+  packDone: 'Every icon is stored locally and will be used first.',
+  packResume: '{n} sets are still missing. Continue the download?',
+  packMenu: 'Download all icons',
+  packHave: 'All icons are local',
+  packFail: '{n} sets didn’t finish. You can resume later',
+  packCancel: 'Cancel',
+  packLater: 'Later',
+  packOk: 'OK',
+})
