@@ -17,6 +17,8 @@ import SetsView from './views/SetsView.vue'
 import { R, S, type Mode } from './lib/store'
 import { t } from './lib/i18n'
 import { ensureAll, loadInfo } from './lib/iconify'
+import PackPrompt from './components/PackPrompt.vue'
+import { packDl, packUi } from './lib/icon-pack'
 import { FMTS, fmtLabel } from './lib/format'
 import { clearSel, copy, like, select, setMode } from './lib/actions'
 import { accelFromEvent, autostartEnabled, inTauri, isMac, quickAccel, quickKey, setAutostart, setCloseToTray, setTrayLabels, toggleQuick } from './lib/native'
@@ -95,6 +97,7 @@ function nav(key: string) {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (packUi.open) return
   if (!inTauri && quickAccel.value && accelFromEvent(e) === quickAccel.value) { e.preventDefault(); openQuick(); return }
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setMode((['search', 'sets', 'swipe', 'fav'] as Mode[])[+e.key - 1]); return }
   if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'f')) {
@@ -178,12 +181,14 @@ onMounted(async () => {
       <hr>
       <FavIO />
       <hr>
+      <button class="it" @click="R.pop = null; packUi.open = true"><UiIcon name="lucide:download" />{{ t(packUi.total > 0 && packUi.cached >= packUi.total ? 'packHave' : 'packMenu') }}<span v-if="packDl.on" class="r">{{ packDl.done }}/{{ packDl.total }}</span></button>
       <button class="it" @click="['avail', 'failed', 'manual'].includes(upd.state) ? installUpdate() : checkUpdate()"><UiIcon name="lucide:refresh-cw" />{{ t('updCheck') }}<span class="r" :class="{ upd: ['avail', 'downloading', 'installing'].includes(upd.state) }">{{ updLabel }}</span></button>
     </Pop>
     <Pop id="cmp" :w="300"><OtherPop /></Pop>
     <Pop id="folder" :w="210"><FolderPop /></Pop>
     <Toast />
     <UpdateTip />
+    <PackPrompt />
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><radialGradient id="inkGlow"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".45" stop-color="#fff" stop-opacity=".32"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><pattern id="inkGrain" patternUnits="userSpaceOnUse" width="14" height="14"><g fill="#7a7a7a"><circle cx="4.53" cy="2.11" r="0.24"/><circle cx="1.01" cy="7.50" r="0.19"/><circle cx="0.81" cy="7.10" r="0.13"/><circle cx="6.07" cy="0.98" r="0.14"/><circle cx="5.94" cy="11.58" r="0.14"/><circle cx="3.13" cy="8.78" r="0.29"/><circle cx="8.08" cy="5.55" r="0.30"/><circle cx="0.65" cy="12.02" r="0.17"/><circle cx="2.02" cy="1.65" r="0.18"/><circle cx="11.43" cy="2.53" r="0.22"/><circle cx="8.94" cy="5.21" r="0.22"/><circle cx="0.88" cy="0.83" r="0.16"/><circle cx="9.53" cy="5.99" r="0.18"/><circle cx="8.20" cy="6.34" r="0.17"/><circle cx="11.12" cy="9.79" r="0.16"/><circle cx="8.04" cy="7.35" r="0.28"/><circle cx="10.21" cy="4.03" r="0.30"/><circle cx="1.65" cy="5.85" r="0.26"/><circle cx="2.13" cy="6.85" r="0.13"/><circle cx="9.36" cy="10.70" r="0.22"/><circle cx="12.26" cy="4.39" r="0.25"/><circle cx="8.32" cy="8.12" r="0.20"/><circle cx="11.76" cy="13.23" r="0.21"/><circle cx="9.30" cy="0.85" r="0.25"/><circle cx="9.06" cy="13.90" r="0.27"/><circle cx="3.98" cy="5.40" r="0.24"/><circle cx="0.32" cy="6.46" r="0.15"/><circle cx="1.64" cy="0.83" r="0.26"/><circle cx="1.81" cy="3.47" r="0.19"/><circle cx="12.20" cy="1.13" r="0.20"/><circle cx="7.69" cy="12.37" r="0.27"/><circle cx="12.10" cy="3.90" r="0.19"/><circle cx="5.02" cy="12.38" r="0.29"/><circle cx="2.11" cy="2.47" r="0.16"/><circle cx="3.27" cy="6.79" r="0.23"/><circle cx="3.68" cy="0.06" r="0.20"/><circle cx="5.17" cy="7.93" r="0.29"/><circle cx="9.67" cy="7.22" r="0.23"/><circle cx="9.47" cy="0.76" r="0.28"/><circle cx="10.92" cy="12.24" r="0.26"/><circle cx="5.49" cy="5.59" r="0.14"/><circle cx="8.88" cy="0.87" r="0.13"/><circle cx="2.92" cy="2.27" r="0.18"/><circle cx="0.74" cy="0.00" r="0.15"/><circle cx="1.42" cy="5.09" r="0.12"/><circle cx="12.24" cy="8.60" r="0.15"/></g></pattern></defs></svg>
   </div>
 </template>

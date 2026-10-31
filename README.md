@@ -145,7 +145,10 @@ pnpm install
 pnpm tauri dev     # 桌面窗口调试
 pnpm dev           # 只调前端（http://localhost:1420）
 pnpm tauri build   # 本机打包
+pnpm sync:iconify  # 从 @iconify/json 生成本地图标集目录和样例，并写入 CHANGELOG.md
 ```
+
+图标集列表和样例在 `src/data/`，离线就能浏览；完整 SVG 不进仓库。第一次打开会问要不要下载全部图标，目录变更记在 [CHANGELOG.md](CHANGELOG.md)。
 
 需要 **Node 22+**、pnpm、Rust stable。Windows 需 WebView2（Win10/11 自带），macOS 需 Xcode Command Line Tools。
 
@@ -168,6 +171,7 @@ python3 brand/render.py
 
 ```
 src/                 Vue 3 前端
+  data/              离线图标集目录与样例（pnpm sync:iconify）
   lib/               Iconify 数据、中文词典、复制格式、存储、动效、Tauri 封装
   components/        标题栏、图标墙、范围弹层、图标格子、详情条……
   views/             找图标 / 资源 / 划一划（含扭蛋机）/ 收藏（灵感宝箱）
@@ -175,7 +179,7 @@ src/                 Vue 3 前端
   QuickApp.vue       速取窗口
 src-tauri/           Tauri 2（Rust）：剪贴板、全局快捷键、速取、托盘、开机启动、拖出、单实例
 brand/               Logo 与安装包素材源
-scripts/             CI 启动冒烟测试
+scripts/             CI 启动冒烟测试、Iconify 目录同步
 preview/             HTML 设计原型
 ```
 

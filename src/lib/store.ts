@@ -42,6 +42,8 @@ const defaults = {
   /** Update check: day of the last automatic check, and a version the user dismissed. */
   updDay: '',
   updSkip: '',
+  /** 全部图标：ask 首次询问，full 下载到本地，ondemand 打开某套再下。 */
+  iconPack: 'ask' as 'ask' | 'full' | 'ondemand',
 }
 
 function read(): Partial<typeof defaults> {

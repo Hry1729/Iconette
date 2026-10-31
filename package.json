@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sync:iconify": "node scripts/prepare-iconify.mjs"
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "^2.1.0",
@@ -25,7 +26,8 @@
     "@vitejs/plugin-vue": "^5.1.0",
     "typescript": "~5.6.0",
     "vite": "^5.4.0",
-    "vue-tsc": "^2.1.0"
+    "vue-tsc": "^2.1.0",
+    "@iconify/json": "2.2.550"
   },
   "packageManager": "pnpm@12.14.0"
 }

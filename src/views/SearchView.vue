@@ -8,7 +8,7 @@ import ScopePop from '../components/ScopePop.vue'
 import DetailBar from '../components/DetailBar.vue'
 import { R, S, toggleFav, toggleSet } from '../lib/store'
 import { t } from '../lib/i18n'
-import { INFO, collection, ensureAll, search, shortName, svg } from '../lib/iconify'
+import { INFO, collection, ensureAll, ensureSet, localNames, search, shortName, svg } from '../lib/iconify'
 import { zh2en } from '../lib/zh'
 import { openUrl } from '../lib/native'
 import { copy, pick, setMode, toast } from '../lib/actions'
@@ -107,10 +107,25 @@ async function run() {
   shown.value = 240
   if (!q && !R.set) { st.value = { k: 'hello' }; raw.value = []; return }
   if (R.set && !q) {
-    const all = await collection(R.set)
+    // 打开整套时把全文 JSON 拉到本地。名称列表仍先走原来的接口，失败再改用本地全文。
+    const p = R.set
+    const job = ensureSet(p)
+    const all = await collection(p)
     if (my !== tok) return
-    st.value = { k: 'set', total: all.length }
-    raw.value = all.map(n => `${R.set}:${n}`)
+    const publish = (names: string[]) => {
+      st.value = { k: 'set', total: names.length }
+      raw.value = names.map(n => `${p}:${n}`)
+    }
+    publish(all)
+    const total = INFO[p]?.total || 0
+    if (total && all.length < total) {
+      void job.then(async (ok) => {
+        if (!ok || my !== tok || R.set !== p) return
+        const again = await localNames(p)
+        if (!again || my !== tok || R.set !== p || again.length <= all.length) return
+        publish(again)
+      })
+    }
     return
   }
   let pre = R.set || scopeIds.value.join(',')
