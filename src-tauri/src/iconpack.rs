@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
 const UA: &str = concat!("Iconette/", env!("CARGO_PKG_VERSION"));
 const STALL: Duration = Duration::from_secs(30);
