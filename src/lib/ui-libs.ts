@@ -27,6 +27,7 @@ export const UIL: UILib[] = [
  {id:'antd',name:'Ant Design',fw:'React',eco:null,url:'https://ant.design',install:'npm i antd',zh:'企业级中后台标准',en:'The enterprise admin standard'},
  {id:'mui',name:'MUI',fw:'React',eco:null,url:'https://mui.com',install:'npm i @mui/material @emotion/react @emotion/styled',zh:'Material Design 的 React 实现',en:'Material Design for React'},
  {id:'radix',name:'Radix Themes',fw:'React',eco:null,url:'https://www.radix-ui.com/themes',install:'npm i @radix-ui/themes',zh:'Radix 官方预设主题组件',en:'Pre-styled components from Radix'},
+ {id:'chakra',name:'Chakra UI',fw:'React',eco:null,url:'https://chakra-ui.com',install:'npm i @chakra-ui/react @emotion/react',zh:'可访问性好、样式属性直观的组件库',en:'Accessible components with intuitive style props'},
  {id:'shadcnvue',name:'shadcn-vue',fw:'Vue',eco:'shadcn-vue',url:'https://www.shadcn-vue.com',install:'npx shadcn-vue@latest init',zh:'shadcn/ui 的 Vue 移植',en:'The Vue port of shadcn/ui'},
  {id:'inspira',name:'Inspira UI',fw:'Vue',eco:'shadcn-vue',url:'https://inspira-ui.com',install:'复制源码 / copy source',zh:'Vue 版动效组件',en:'Animated components for Vue'},
  {id:'element',name:'Element Plus',fw:'Vue',eco:null,demo:true,url:'https://element-plus.org',install:'npm i element-plus',zh:'国内最常用的 Vue 3 中后台组件库',en:'The most used Vue 3 admin library in China'},
@@ -37,7 +38,7 @@ export const UIL: UILib[] = [
  {id:'antdv',name:'Ant Design Vue',fw:'Vue',eco:null,url:'https://antdv.com',install:'npm i ant-design-vue',zh:'Ant Design 的 Vue 实现',en:'Ant Design for Vue'},
 ];
 /** Brand colour per library (capsule halves, card dots). */
-export const UICOL: Record<string, string> = { shadcn: '#18181b', animate: '#ec4899', magic: '#a855f7', aceternity: '#06b6d4', origin: '#f97316', mantine: '#339af0', heroui: '#006fee', antd: '#1677ff', mui: '#007fff', radix: '#6e56cf', shadcnvue: '#41b883', inspira: '#f59e0b', element: '#409eff', naive: '#18a058', nuxtui: '#00dc82', vuetify: '#1867c0', primevue: '#10b981', antdv: '#1677ff' }
+export const UICOL: Record<string, string> = { shadcn: '#18181b', animate: '#ec4899', magic: '#a855f7', aceternity: '#06b6d4', origin: '#f97316', mantine: '#339af0', heroui: '#006fee', antd: '#1677ff', mui: '#007fff', radix: '#6e56cf', chakra: '#319795', shadcnvue: '#41b883', inspira: '#f59e0b', element: '#409eff', naive: '#18a058', nuxtui: '#00dc82', vuetify: '#1867c0', primevue: '#10b981', antdv: '#1677ff' }
 export const UI = (id: string) => UIL.find(l => l.id === id)!
 export const DEMOS = UIL.filter(l => l.demo)
 /** Card screenshots for the libraries with a live demo (public/snap/*.jpg). */
