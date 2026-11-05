@@ -195,8 +195,8 @@ importers:
         version: 3.5.44(typescript@5.6.3)
     devDependencies:
       '@iconify/json':
-        specifier: 2.2.550
-        version: 2.2.550
+        specifier: 2.2.553
+        version: 2.2.553
       '@tauri-apps/cli':
         specifier: ^2.0.0
         version: 2.12.3
@@ -373,8 +373,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@iconify/json@2.2.550':
-    resolution: {integrity: sha512-7X+90mjpbgvCRRkOOrwV88L8CfqTUye5SZZXhAa/+131BYN2MYkPNZgNHz2MuaD7h2d2QPruu7HmwuN9v3IfIA==}
+  '@iconify/json@2.2.553':
+    resolution: {integrity: sha512-wJiXvMppZufZiRtHNnvL/BfIQONajWDEbTmBPqWMFX2HSOLj54FGmhmp5M56ErYfyS39s9RKS1PhQOBiBy+L4w==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -900,7 +900,7 @@ snapshots:
   '@esbuild/win32-x64@0.21.5':
     optional: true
 
-  '@iconify/json@2.2.550':
+  '@iconify/json@2.2.553':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
